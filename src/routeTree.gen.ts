@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ShowsRouteImport } from './routes/shows'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as ProductionRouteImport } from './routes/production'
+import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as EvaluationRouteImport } from './routes/evaluation'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -32,6 +33,11 @@ const RegisterRoute = RegisterRouteImport.update({
 const ProductionRoute = ProductionRouteImport.update({
   id: '/production',
   path: '/production',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotificationsRoute = NotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/evaluation': typeof EvaluationRoute
   '/login': typeof LoginRoute
+  '/notifications': typeof NotificationsRoute
   '/production': typeof ProductionRoute
   '/register': typeof RegisterRoute
   '/shows': typeof ShowsRouteWithChildren
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/evaluation': typeof EvaluationRoute
   '/login': typeof LoginRoute
+  '/notifications': typeof NotificationsRoute
   '/production': typeof ProductionRoute
   '/register': typeof RegisterRoute
   '/shows': typeof ShowsRouteWithChildren
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/evaluation': typeof EvaluationRoute
   '/login': typeof LoginRoute
+  '/notifications': typeof NotificationsRoute
   '/production': typeof ProductionRoute
   '/register': typeof RegisterRoute
   '/shows': typeof ShowsRouteWithChildren
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/evaluation'
     | '/login'
+    | '/notifications'
     | '/production'
     | '/register'
     | '/shows'
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/evaluation'
     | '/login'
+    | '/notifications'
     | '/production'
     | '/register'
     | '/shows'
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/evaluation'
     | '/login'
+    | '/notifications'
     | '/production'
     | '/register'
     | '/shows'
@@ -141,6 +153,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   EvaluationRoute: typeof EvaluationRoute
   LoginRoute: typeof LoginRoute
+  NotificationsRoute: typeof NotificationsRoute
   ProductionRoute: typeof ProductionRoute
   RegisterRoute: typeof RegisterRoute
   ShowsRoute: typeof ShowsRouteWithChildren
@@ -167,6 +180,13 @@ declare module '@tanstack/react-router' {
       path: '/production'
       fullPath: '/production'
       preLoaderRoute: typeof ProductionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notifications': {
+      id: '/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof NotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -230,6 +250,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   EvaluationRoute: EvaluationRoute,
   LoginRoute: LoginRoute,
+  NotificationsRoute: NotificationsRoute,
   ProductionRoute: ProductionRoute,
   RegisterRoute: RegisterRoute,
   ShowsRoute: ShowsRouteWithChildren,
