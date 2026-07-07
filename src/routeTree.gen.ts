@@ -16,6 +16,7 @@ import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as EvaluationRouteImport } from './routes/evaluation'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as AuditLogsRouteImport } from './routes/audit-logs'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShowsNewRouteImport } from './routes/shows.new'
@@ -55,6 +56,11 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuditLogsRoute = AuditLogsRouteImport.update({
+  id: '/audit-logs',
+  path: '/audit-logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AnalyticsRoute = AnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
@@ -74,6 +80,7 @@ const ShowsNewRoute = ShowsNewRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
+  '/audit-logs': typeof AuditLogsRoute
   '/dashboard': typeof DashboardRoute
   '/evaluation': typeof EvaluationRoute
   '/login': typeof LoginRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
+  '/audit-logs': typeof AuditLogsRoute
   '/dashboard': typeof DashboardRoute
   '/evaluation': typeof EvaluationRoute
   '/login': typeof LoginRoute
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
+  '/audit-logs': typeof AuditLogsRoute
   '/dashboard': typeof DashboardRoute
   '/evaluation': typeof EvaluationRoute
   '/login': typeof LoginRoute
@@ -113,6 +122,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/analytics'
+    | '/audit-logs'
     | '/dashboard'
     | '/evaluation'
     | '/login'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/analytics'
+    | '/audit-logs'
     | '/dashboard'
     | '/evaluation'
     | '/login'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/analytics'
+    | '/audit-logs'
     | '/dashboard'
     | '/evaluation'
     | '/login'
@@ -150,6 +162,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
+  AuditLogsRoute: typeof AuditLogsRoute
   DashboardRoute: typeof DashboardRoute
   EvaluationRoute: typeof EvaluationRoute
   LoginRoute: typeof LoginRoute
@@ -210,6 +223,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/audit-logs': {
+      id: '/audit-logs'
+      path: '/audit-logs'
+      fullPath: '/audit-logs'
+      preLoaderRoute: typeof AuditLogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/analytics': {
       id: '/analytics'
       path: '/analytics'
@@ -247,6 +267,7 @@ const ShowsRouteWithChildren = ShowsRoute._addFileChildren(ShowsRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
+  AuditLogsRoute: AuditLogsRoute,
   DashboardRoute: DashboardRoute,
   EvaluationRoute: EvaluationRoute,
   LoginRoute: LoginRoute,
