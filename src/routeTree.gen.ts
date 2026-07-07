@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ShowsRouteImport } from './routes/shows'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as EvaluationRouteImport } from './routes/evaluation'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShowsNewRouteImport } from './routes/shows.new'
@@ -29,6 +30,11 @@ const RegisterRoute = RegisterRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EvaluationRoute = EvaluationRouteImport.update({
+  id: '/evaluation',
+  path: '/evaluation',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -50,6 +56,7 @@ const ShowsNewRoute = ShowsNewRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/evaluation': typeof EvaluationRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/shows': typeof ShowsRouteWithChildren
@@ -58,6 +65,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/evaluation': typeof EvaluationRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/shows': typeof ShowsRouteWithChildren
@@ -67,6 +75,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/evaluation': typeof EvaluationRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/shows': typeof ShowsRouteWithChildren
@@ -77,16 +86,25 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dashboard'
+    | '/evaluation'
     | '/login'
     | '/register'
     | '/shows'
     | '/shows/new'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dashboard' | '/login' | '/register' | '/shows' | '/shows/new'
+  to:
+    | '/'
+    | '/dashboard'
+    | '/evaluation'
+    | '/login'
+    | '/register'
+    | '/shows'
+    | '/shows/new'
   id:
     | '__root__'
     | '/'
     | '/dashboard'
+    | '/evaluation'
     | '/login'
     | '/register'
     | '/shows'
@@ -96,6 +114,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
+  EvaluationRoute: typeof EvaluationRoute
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
   ShowsRoute: typeof ShowsRouteWithChildren
@@ -122,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/evaluation': {
+      id: '/evaluation'
+      path: '/evaluation'
+      fullPath: '/evaluation'
+      preLoaderRoute: typeof EvaluationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -161,6 +187,7 @@ const ShowsRouteWithChildren = ShowsRoute._addFileChildren(ShowsRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
+  EvaluationRoute: EvaluationRoute,
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
   ShowsRoute: ShowsRouteWithChildren,
