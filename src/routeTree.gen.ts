@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ShowsRouteImport } from './routes/shows'
 import { Route as RegisterRouteImport } from './routes/register'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ProductionRouteImport } from './routes/production'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as LoginRouteImport } from './routes/login'
@@ -29,6 +30,11 @@ const ShowsRoute = ShowsRouteImport.update({
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProductionRoute = ProductionRouteImport.update({
@@ -86,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/production': typeof ProductionRoute
+  '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
   '/shows': typeof ShowsRouteWithChildren
   '/shows/new': typeof ShowsNewRoute
@@ -99,6 +106,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/production': typeof ProductionRoute
+  '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
   '/shows': typeof ShowsRouteWithChildren
   '/shows/new': typeof ShowsNewRoute
@@ -113,6 +121,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/production': typeof ProductionRoute
+  '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
   '/shows': typeof ShowsRouteWithChildren
   '/shows/new': typeof ShowsNewRoute
@@ -128,6 +137,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/notifications'
     | '/production'
+    | '/profile'
     | '/register'
     | '/shows'
     | '/shows/new'
@@ -141,6 +151,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/notifications'
     | '/production'
+    | '/profile'
     | '/register'
     | '/shows'
     | '/shows/new'
@@ -154,6 +165,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/notifications'
     | '/production'
+    | '/profile'
     | '/register'
     | '/shows'
     | '/shows/new'
@@ -168,6 +180,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
   ProductionRoute: typeof ProductionRoute
+  ProfileRoute: typeof ProfileRoute
   RegisterRoute: typeof RegisterRoute
   ShowsRoute: typeof ShowsRouteWithChildren
 }
@@ -186,6 +199,13 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/production': {
@@ -273,6 +293,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,
   ProductionRoute: ProductionRoute,
+  ProfileRoute: ProfileRoute,
   RegisterRoute: RegisterRoute,
   ShowsRoute: ShowsRouteWithChildren,
 }
