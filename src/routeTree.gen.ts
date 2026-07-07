@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ShowsRouteImport } from './routes/shows'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ProductionRouteImport } from './routes/production'
@@ -25,6 +26,11 @@ import { Route as ShowsNewRouteImport } from './routes/shows.new'
 const ShowsRoute = ShowsRouteImport.update({
   id: '/shows',
   path: '/shows',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RegisterRoute = RegisterRouteImport.update({
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/production': typeof ProductionRoute
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
+  '/settings': typeof SettingsRoute
   '/shows': typeof ShowsRouteWithChildren
   '/shows/new': typeof ShowsNewRoute
 }
@@ -108,6 +115,7 @@ export interface FileRoutesByTo {
   '/production': typeof ProductionRoute
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
+  '/settings': typeof SettingsRoute
   '/shows': typeof ShowsRouteWithChildren
   '/shows/new': typeof ShowsNewRoute
 }
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   '/production': typeof ProductionRoute
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
+  '/settings': typeof SettingsRoute
   '/shows': typeof ShowsRouteWithChildren
   '/shows/new': typeof ShowsNewRoute
 }
@@ -139,6 +148,7 @@ export interface FileRouteTypes {
     | '/production'
     | '/profile'
     | '/register'
+    | '/settings'
     | '/shows'
     | '/shows/new'
   fileRoutesByTo: FileRoutesByTo
@@ -153,6 +163,7 @@ export interface FileRouteTypes {
     | '/production'
     | '/profile'
     | '/register'
+    | '/settings'
     | '/shows'
     | '/shows/new'
   id:
@@ -167,6 +178,7 @@ export interface FileRouteTypes {
     | '/production'
     | '/profile'
     | '/register'
+    | '/settings'
     | '/shows'
     | '/shows/new'
   fileRoutesById: FileRoutesById
@@ -182,6 +194,7 @@ export interface RootRouteChildren {
   ProductionRoute: typeof ProductionRoute
   ProfileRoute: typeof ProfileRoute
   RegisterRoute: typeof RegisterRoute
+  SettingsRoute: typeof SettingsRoute
   ShowsRoute: typeof ShowsRouteWithChildren
 }
 
@@ -192,6 +205,13 @@ declare module '@tanstack/react-router' {
       path: '/shows'
       fullPath: '/shows'
       preLoaderRoute: typeof ShowsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register': {
@@ -295,6 +315,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProductionRoute: ProductionRoute,
   ProfileRoute: ProfileRoute,
   RegisterRoute: RegisterRoute,
+  SettingsRoute: SettingsRoute,
   ShowsRoute: ShowsRouteWithChildren,
 }
 export const routeTree = rootRouteImport
