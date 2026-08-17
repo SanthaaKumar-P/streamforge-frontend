@@ -33,7 +33,7 @@ function NewShow() {
             <div className="mx-auto h-16 w-16 grid place-items-center rounded-2xl bg-success/15 text-success mb-6 animate-pulse-glow">
               <PartyPopper className="h-8 w-8" />
             </div>
-            <h2 className="text-2xl font-bold">Submission received</h2>
+            <h2 className="text-2xl font-bold">Show submitted successfully!</h2>
             <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
               Your pitch has entered the evaluation queue. You'll be notified as soon as it enters review.
             </p>
