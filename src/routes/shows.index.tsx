@@ -5,7 +5,7 @@ import { shows, formatCurrency, type ShowStatus } from "@/lib/mock-data";
 import { Filter, Search, SlidersHorizontal, MoreHorizontal, Eye, Pencil, Trash2, CheckCircle2, XCircle } from "lucide-react";
 import { useState } from "react";
 
-export const Route = createFileRoute("/shows")({
+export const Route = createFileRoute("/shows/")({
   head: () => ({
     meta: [
       { title: "Shows — Netflix Show Manager" },

@@ -9,11 +9,13 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ShowsRouteImport } from './routes/shows'
+import { Route as UsersRouteImport } from './routes/users'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ProductionRouteImport } from './routes/production'
+import { Route as PermissionsRouteImport } from './routes/permissions'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as EvaluationRouteImport } from './routes/evaluation'
@@ -21,16 +23,23 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AuditLogsRouteImport } from './routes/audit-logs'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ShowsIndexRouteImport } from './routes/shows.index'
 import { Route as ShowsNewRouteImport } from './routes/shows.new'
+import { Route as ShowsShowIdRouteImport } from './routes/shows.$showId'
 
-const ShowsRoute = ShowsRouteImport.update({
-  id: '/shows',
-  path: '/shows',
+const UsersRoute = UsersRouteImport.update({
+  id: '/users',
+  path: '/users',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportsRoute = ReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RegisterRoute = RegisterRouteImport.update({
@@ -46,6 +55,11 @@ const ProfileRoute = ProfileRouteImport.update({
 const ProductionRoute = ProductionRouteImport.update({
   id: '/production',
   path: '/production',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PermissionsRoute = PermissionsRouteImport.update({
+  id: '/permissions',
+  path: '/permissions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NotificationsRoute = NotificationsRouteImport.update({
@@ -83,10 +97,20 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShowsIndexRoute = ShowsIndexRouteImport.update({
+  id: '/shows/',
+  path: '/shows/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ShowsNewRoute = ShowsNewRouteImport.update({
-  id: '/new',
-  path: '/new',
-  getParentRoute: () => ShowsRoute,
+  id: '/shows/new',
+  path: '/shows/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShowsShowIdRoute = ShowsShowIdRouteImport.update({
+  id: '/shows/$showId',
+  path: '/shows/$showId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -97,12 +121,16 @@ export interface FileRoutesByFullPath {
   '/evaluation': typeof EvaluationRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
+  '/permissions': typeof PermissionsRoute
   '/production': typeof ProductionRoute
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
+  '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
-  '/shows': typeof ShowsRouteWithChildren
+  '/users': typeof UsersRoute
+  '/shows/$showId': typeof ShowsShowIdRoute
   '/shows/new': typeof ShowsNewRoute
+  '/shows/': typeof ShowsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -112,12 +140,16 @@ export interface FileRoutesByTo {
   '/evaluation': typeof EvaluationRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
+  '/permissions': typeof PermissionsRoute
   '/production': typeof ProductionRoute
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
+  '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
-  '/shows': typeof ShowsRouteWithChildren
+  '/users': typeof UsersRoute
+  '/shows/$showId': typeof ShowsShowIdRoute
   '/shows/new': typeof ShowsNewRoute
+  '/shows': typeof ShowsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -128,12 +160,16 @@ export interface FileRoutesById {
   '/evaluation': typeof EvaluationRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
+  '/permissions': typeof PermissionsRoute
   '/production': typeof ProductionRoute
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
+  '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
-  '/shows': typeof ShowsRouteWithChildren
+  '/users': typeof UsersRoute
+  '/shows/$showId': typeof ShowsShowIdRoute
   '/shows/new': typeof ShowsNewRoute
+  '/shows/': typeof ShowsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -145,12 +181,16 @@ export interface FileRouteTypes {
     | '/evaluation'
     | '/login'
     | '/notifications'
+    | '/permissions'
     | '/production'
     | '/profile'
     | '/register'
+    | '/reports'
     | '/settings'
-    | '/shows'
+    | '/users'
+    | '/shows/$showId'
     | '/shows/new'
+    | '/shows/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -160,12 +200,16 @@ export interface FileRouteTypes {
     | '/evaluation'
     | '/login'
     | '/notifications'
+    | '/permissions'
     | '/production'
     | '/profile'
     | '/register'
+    | '/reports'
     | '/settings'
-    | '/shows'
+    | '/users'
+    | '/shows/$showId'
     | '/shows/new'
+    | '/shows'
   id:
     | '__root__'
     | '/'
@@ -175,12 +219,16 @@ export interface FileRouteTypes {
     | '/evaluation'
     | '/login'
     | '/notifications'
+    | '/permissions'
     | '/production'
     | '/profile'
     | '/register'
+    | '/reports'
     | '/settings'
-    | '/shows'
+    | '/users'
+    | '/shows/$showId'
     | '/shows/new'
+    | '/shows/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -191,20 +239,25 @@ export interface RootRouteChildren {
   EvaluationRoute: typeof EvaluationRoute
   LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
+  PermissionsRoute: typeof PermissionsRoute
   ProductionRoute: typeof ProductionRoute
   ProfileRoute: typeof ProfileRoute
   RegisterRoute: typeof RegisterRoute
+  ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
-  ShowsRoute: typeof ShowsRouteWithChildren
+  UsersRoute: typeof UsersRoute
+  ShowsShowIdRoute: typeof ShowsShowIdRoute
+  ShowsNewRoute: typeof ShowsNewRoute
+  ShowsIndexRoute: typeof ShowsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/shows': {
-      id: '/shows'
-      path: '/shows'
-      fullPath: '/shows'
-      preLoaderRoute: typeof ShowsRouteImport
+    '/users': {
+      id: '/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof UsersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -212,6 +265,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reports': {
+      id: '/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof ReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register': {
@@ -233,6 +293,13 @@ declare module '@tanstack/react-router' {
       path: '/production'
       fullPath: '/production'
       preLoaderRoute: typeof ProductionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/permissions': {
+      id: '/permissions'
+      path: '/permissions'
+      fullPath: '/permissions'
+      preLoaderRoute: typeof PermissionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/notifications': {
@@ -284,25 +351,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/shows/': {
+      id: '/shows/'
+      path: '/shows'
+      fullPath: '/shows/'
+      preLoaderRoute: typeof ShowsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/shows/new': {
       id: '/shows/new'
-      path: '/new'
+      path: '/shows/new'
       fullPath: '/shows/new'
       preLoaderRoute: typeof ShowsNewRouteImport
-      parentRoute: typeof ShowsRoute
+      parentRoute: typeof rootRouteImport
+    }
+    '/shows/$showId': {
+      id: '/shows/$showId'
+      path: '/shows/$showId'
+      fullPath: '/shows/$showId'
+      preLoaderRoute: typeof ShowsShowIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
-
-interface ShowsRouteChildren {
-  ShowsNewRoute: typeof ShowsNewRoute
-}
-
-const ShowsRouteChildren: ShowsRouteChildren = {
-  ShowsNewRoute: ShowsNewRoute,
-}
-
-const ShowsRouteWithChildren = ShowsRoute._addFileChildren(ShowsRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -312,11 +383,16 @@ const rootRouteChildren: RootRouteChildren = {
   EvaluationRoute: EvaluationRoute,
   LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,
+  PermissionsRoute: PermissionsRoute,
   ProductionRoute: ProductionRoute,
   ProfileRoute: ProfileRoute,
   RegisterRoute: RegisterRoute,
+  ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,
-  ShowsRoute: ShowsRouteWithChildren,
+  UsersRoute: UsersRoute,
+  ShowsShowIdRoute: ShowsShowIdRoute,
+  ShowsNewRoute: ShowsNewRoute,
+  ShowsIndexRoute: ShowsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

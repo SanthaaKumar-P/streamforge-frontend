@@ -2,30 +2,40 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, Film, PlusSquare, ClipboardCheck, Kanban,
   BarChart3, Bell, ScrollText, User, Settings, LogOut, Clapperboard,
+  Users, ShieldCheck, FileBarChart, Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRole, type Permission } from "@/lib/roles";
 
-const nav = [
+type Item = { to: string; label: string; icon: typeof Film; perm: Permission };
+
+const nav: { section: string; items: Item[] }[] = [
   { section: "Overview", items: [
-    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/analytics", label: "Analytics", icon: BarChart3 },
+    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, perm: "view_platform" },
+    { to: "/analytics", label: "Analytics", icon: BarChart3, perm: "analytics" },
   ]},
   { section: "Content", items: [
-    { to: "/shows", label: "Shows", icon: Film },
-    { to: "/shows/new", label: "Submit Show", icon: PlusSquare },
-    { to: "/evaluation", label: "Evaluation", icon: ClipboardCheck },
-    { to: "/production", label: "Production", icon: Kanban },
+    { to: "/shows", label: "Shows", icon: Film, perm: "search_shows" },
+    { to: "/shows/new", label: "Submit Show", icon: PlusSquare, perm: "submit_show" },
+    { to: "/evaluation", label: "Evaluation", icon: ClipboardCheck, perm: "evaluate_content" },
+    { to: "/production", label: "Production", icon: Kanban, perm: "view_production_status" },
+    { to: "/reports", label: "Reports", icon: FileBarChart, perm: "generate_reports" },
+  ]},
+  { section: "Administration", items: [
+    { to: "/users", label: "User Management", icon: Users, perm: "manage_users" },
+    { to: "/permissions", label: "Permission Matrix", icon: ShieldCheck, perm: "view_platform" },
+    { to: "/audit-logs", label: "Audit Logs", icon: ScrollText, perm: "audit_logs" },
   ]},
   { section: "Workspace", items: [
-    { to: "/notifications", label: "Notifications", icon: Bell },
-    { to: "/audit-logs", label: "Audit Logs", icon: ScrollText },
-    { to: "/profile", label: "Profile", icon: User },
-    { to: "/settings", label: "Settings", icon: Settings },
+    { to: "/notifications", label: "Notifications", icon: Bell, perm: "view_platform" },
+    { to: "/profile", label: "Profile", icon: User, perm: "update_personal_info" },
+    { to: "/settings", label: "Settings", icon: Settings, perm: "update_personal_info" },
   ]},
 ];
 
 export function Sidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { can, profile } = useRole();
 
   return (
     <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 w-64 flex-col border-r border-border bg-sidebar z-40">
@@ -48,6 +58,21 @@ export function Sidebar() {
             <ul className="space-y-0.5">
               {group.items.map((item) => {
                 const active = pathname === item.to || (item.to !== "/dashboard" && pathname.startsWith(item.to));
+                const allowed = can(item.perm);
+                if (!allowed) {
+                  return (
+                    <li key={item.to}>
+                      <div
+                        title={`Requires elevated role — locked for ${profile.label}`}
+                        className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground/40 cursor-not-allowed"
+                      >
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                        <Lock className="ml-auto h-3 w-3" />
+                      </div>
+                    </li>
+                  );
+                }
                 return (
                   <li key={item.to}>
                     <Link
@@ -74,10 +99,10 @@ export function Sidebar() {
       <div className="p-3 border-t border-sidebar-border">
         <div className="glass rounded-2xl p-3 space-y-2">
           <div className="flex items-center gap-3">
-            <img src="https://i.pravatar.cc/64?img=13" alt="" className="h-9 w-9 rounded-full object-cover" />
+            <img src={profile.avatar} alt="" className="h-9 w-9 rounded-full object-cover" />
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium truncate">Ren Ito</div>
-              <div className="text-xs text-muted-foreground truncate">Administrator</div>
+              <div className="text-sm font-medium truncate">{profile.person}</div>
+              <div className="text-xs text-muted-foreground truncate">{profile.label}</div>
             </div>
             <Link to="/login" className="text-muted-foreground hover:text-primary transition-colors">
               <LogOut className="h-4 w-4" />
