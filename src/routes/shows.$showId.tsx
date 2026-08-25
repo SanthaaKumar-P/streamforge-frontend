@@ -1,74 +1,227 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  notFound,
+} from "@tanstack/react-router";
+
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, Chip, Progress } from "@/components/ui-kit";
-import { shows, formatCurrency, type ShowStatus } from "@/lib/mock-data";
-import { ArrowLeft, CalendarDays, Clapperboard, Coins, Film, Users2, Gauge, CheckCircle2, Circle } from "lucide-react";
 
-export const Route = createFileRoute("/shows/$showId")({
-  loader: ({ params }) => {
-    const show = shows.find((s) => s.id === params.showId);
-    if (!show) throw notFound();
-    return { show };
+import {
+  getShowById,
+  type ShowResponse,
+} from "@/api/shows";
+
+import {
+  ArrowLeft,
+  CalendarDays,
+  Clapperboard,
+  Coins,
+  Film,
+  Users2,
+  Gauge,
+  CheckCircle2,
+  Circle,
+  RefreshCw,
+} from "lucide-react";
+
+export const Route = createFileRoute(
+  "/shows/$showId"
+)({
+  loader: async ({ params }) => {
+    try {
+      const show = await getShowById(
+        Number(params.showId)
+      );
+
+      return { show };
+    } catch {
+      throw notFound();
+    }
   },
+
   head: ({ loaderData }) => {
     if (!loaderData) {
-      return { meta: [{ title: "Show not found — Netflix Show Manager" }, { name: "robots", content: "noindex" }] };
+      return {
+        meta: [
+          {
+            title:
+              "Show not found — Netflix Show Manager",
+          },
+          {
+            name: "robots",
+            content: "noindex",
+          },
+        ],
+      };
     }
+
     const { show } = loaderData;
-    const title = `${show.title} — Netflix Show Manager`;
-    const description = `${show.genre} original by ${show.creator}. ${show.episodes} episodes, ${formatCurrency(show.budget)} budget, currently ${show.stage}.`;
+
     return {
       meta: [
-        { title },
-        { name: "description", content: description },
-        { property: "og:title", content: title },
-        { property: "og:description", content: description },
-        { property: "og:image", content: show.poster },
-        { name: "twitter:image", content: show.poster },
+        {
+          title: `${show.title} — Netflix Show Manager`,
+        },
+        {
+          name: "description",
+          content:
+            show.description ||
+            "Netflix Show Manager show details.",
+        },
       ],
     };
   },
+
   component: ShowDetail,
 });
 
-const statusVariant: Record<ShowStatus, "success" | "warning" | "danger" | "info" | "primary"> = {
-  approved: "success", pending: "warning", rejected: "danger", review: "info", production: "primary",
-};
+function normalizeStatus(status?: string | null) {
+  if (!status) return "PENDING";
 
-const stageOrder = ["planning", "pre-production", "production", "post-production", "completed"] as const;
+  return status.toUpperCase();
+}
 
-const scorecard = [
-  { label: "Story originality", value: 88 },
-  { label: "Market viability", value: 74 },
-  { label: "Platform / brand fit", value: 92 },
-  { label: "Production feasibility", value: 66 },
-];
+function statusLabel(status?: string | null) {
+  switch (normalizeStatus(status)) {
+    case "APPROVED":
+      return "Approved";
+    case "REJECTED":
+      return "Rejected";
+    case "UNDER_REVIEW":
+      return "Under Review";
+    case "IN_PRODUCTION":
+      return "In Production";
+    default:
+      return "Pending";
+  }
+}
+
+function statusVariant(
+  status?: string | null
+): "success" | "warning" | "danger" | "info" | "primary" {
+  switch (normalizeStatus(status)) {
+    case "APPROVED":
+      return "success";
+    case "REJECTED":
+      return "danger";
+    case "UNDER_REVIEW":
+      return "warning";
+    case "IN_PRODUCTION":
+      return "primary";
+    default:
+      return "info";
+  }
+}
+
+function formatCurrency(
+  value?: number | null
+) {
+  if (value == null) return "—";
+
+  if (value >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(1)}M`;
+  }
+
+  if (value >= 1_000) {
+    return `$${(value / 1_000).toFixed(0)}K`;
+  }
+
+  return `$${value.toLocaleString()}`;
+}
+
+function formatDate(
+  value?: string | null
+) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString();
+}
+
+function getStatusProgress(
+  status?: string | null
+) {
+  switch (normalizeStatus(status)) {
+    case "APPROVED":
+      return 100;
+    case "IN_PRODUCTION":
+      return 75;
+    case "UNDER_REVIEW":
+      return 50;
+    case "REJECTED":
+      return 100;
+    default:
+      return 20;
+  }
+}
 
 function ShowDetail() {
   const { show } = Route.useLoaderData();
-  const stageIndex = stageOrder.indexOf(show.stage);
-  const spent = Math.round(show.budget * (show.progress / 100));
+
+  const creatorName =
+    show.creator?.fullName ||
+    show.creator?.username ||
+    "Unknown creator";
+
+  const creatorEmail =
+    show.creator?.email || "No email available";
 
   return (
     <DashboardLayout>
-      <Link to="/shows" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition mb-4">
-        <ArrowLeft className="h-4 w-4" /> Back to shows
+      <Link
+        to="/shows"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition mb-4"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to shows
       </Link>
 
       <Card className="!p-0 overflow-hidden mb-6">
-        <div className="relative h-56 md:h-72">
-          <img src={show.poster} alt={`${show.title} key art`} className="absolute inset-0 h-full w-full object-cover" />
-          <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, transparent 20%, oklch(0.14 0 0 / 0.96))" }} />
+        <div className="relative h-64 md:h-80">
+          <div className="absolute inset-0 bg-gradient-to-br from-red-950 via-background to-background" />
+
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Film className="h-24 w-24 text-primary/20" />
+          </div>
+
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
+
           <div className="absolute bottom-5 left-5 right-5">
             <div className="flex flex-wrap items-center gap-2 mb-3">
-              <Chip variant={statusVariant[show.status]}>{show.status}</Chip>
-              <Chip>{show.genre}</Chip>
-              <Chip variant="info">{show.language}</Chip>
-              <Chip variant={show.priority === "critical" ? "danger" : "warning"}>{show.priority} priority</Chip>
+              <Chip
+                variant={statusVariant(
+                  show.status
+                )}
+              >
+                {statusLabel(show.status)}
+              </Chip>
+
+              {show.language && (
+                <Chip variant="info">
+                  {show.language}
+                </Chip>
+              )}
+
+              {show.targetAudience && (
+                <Chip>
+                  {show.targetAudience}
+                </Chip>
+              )}
             </div>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{show.title}</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {show.id} · created by {show.creator} · submitted {new Date(show.submittedAt).toLocaleDateString()}
+
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
+              {show.title}
+            </h1>
+
+            <p className="text-sm text-muted-foreground mt-2">
+              SH-{show.showId} · created by{" "}
+              {creatorName}
             </p>
           </div>
         </div>
@@ -77,106 +230,200 @@ function ShowDetail() {
       <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-6">
         <div className="space-y-6">
           <Card>
-            <h2 className="text-lg font-semibold mb-2">Logline</h2>
-            <p className="text-sm text-muted-foreground">{show.description}</p>
-            <div className="grid sm:grid-cols-4 gap-4 mt-6">
-              <Fact icon={<Film className="h-4 w-4" />} label="Episodes" value={String(show.episodes)} />
-              <Fact icon={<Coins className="h-4 w-4" />} label="Budget" value={formatCurrency(show.budget)} />
-              <Fact icon={<Users2 className="h-4 w-4" />} label="Crew" value={String(show.team)} />
-              <Fact icon={<CalendarDays className="h-4 w-4" />} label="Deadline" value={new Date(show.deadline).toLocaleDateString()} />
+            <h2 className="text-lg font-semibold mb-2">
+              Synopsis
+            </h2>
+
+            <p className="text-sm text-muted-foreground leading-6">
+              {show.synopsis ||
+                show.description ||
+                "No synopsis has been added yet."}
+            </p>
+
+            <div className="grid sm:grid-cols-2 gap-4 mt-6">
+              <Fact
+                icon={
+                  <Coins className="h-4 w-4" />
+                }
+                label="Estimated budget"
+                value={formatCurrency(
+                  show.estimatedBudget
+                )}
+              />
+
+              <Fact
+                icon={
+                  <CalendarDays className="h-4 w-4" />
+                }
+                label="Expected release"
+                value={formatDate(
+                  show.expectedReleaseDate
+                )}
+              />
+
+              <Fact
+                icon={
+                  <Users2 className="h-4 w-4" />
+                }
+                label="Creator"
+                value={creatorName}
+              />
+
+              <Fact
+                icon={
+                  <Film className="h-4 w-4" />
+                }
+                label="Language"
+                value={show.language || "—"}
+              />
             </div>
           </Card>
 
           <Card>
-            <h2 className="text-lg font-semibold mb-5">Production timeline</h2>
-            <ol className="relative">
-              {stageOrder.map((stage, i) => {
-                const done = i < stageIndex;
-                const active = i === stageIndex;
-                return (
-                  <li key={stage} className="flex gap-4 pb-6 last:pb-0 relative">
-                    {i < stageOrder.length - 1 && (
-                      <span className="absolute left-[13px] top-7 bottom-0 w-px bg-border" />
-                    )}
-                    <span className={`h-7 w-7 shrink-0 grid place-items-center rounded-full ${done ? "bg-success/20 text-success" : active ? "bg-primary text-primary-foreground animate-pulse-glow" : "bg-muted text-muted-foreground"}`}>
-                      {done ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-3 w-3" />}
-                    </span>
-                    <div className="min-w-0">
-                      <div className={`text-sm font-medium capitalize ${active ? "" : "text-muted-foreground"}`}>{stage.replace("-", " ")}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {done ? "Completed" : active ? `In progress — ${show.progress}%` : "Not started"}
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          </Card>
+            <h2 className="text-lg font-semibold mb-5">
+              Show status
+            </h2>
 
-          <Card>
-            <h2 className="text-lg font-semibold mb-5">Evaluation scorecard</h2>
             <div className="space-y-4">
-              {scorecard.map((c) => (
-                <div key={c.label}>
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span className="text-muted-foreground">{c.label}</span>
-                    <span className="font-medium">{c.value}/100</span>
-                  </div>
-                  <Progress value={c.value} />
+              <div>
+                <div className="flex justify-between text-xs mb-2">
+                  <span className="text-muted-foreground">
+                    Current progress
+                  </span>
+
+                  <span className="font-medium">
+                    {getStatusProgress(
+                      show.status
+                    )}
+                    %
+                  </span>
                 </div>
-              ))}
+
+                <Progress
+                  value={getStatusProgress(
+                    show.status
+                  )}
+                />
+              </div>
+
+              <div className="flex items-center gap-3 rounded-xl border border-border p-4">
+                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
+                  <RefreshCw className="h-5 w-5" />
+                </div>
+
+                <div>
+                  <div className="text-sm font-medium">
+                    {statusLabel(show.status)}
+                  </div>
+
+                  <div className="text-xs text-muted-foreground">
+                    Current workflow status
+                  </div>
+                </div>
+              </div>
             </div>
+          </Card>
+
+          <Card>
+            <h2 className="text-lg font-semibold mb-5">
+              Description
+            </h2>
+
+            <p className="text-sm text-muted-foreground leading-6">
+              {show.description ||
+                "No description has been added for this show."}
+            </p>
           </Card>
         </div>
 
         <div className="space-y-6">
           <Card>
             <div className="flex items-center gap-2 text-sm font-semibold mb-4">
-              <Gauge className="h-4 w-4 text-primary" /> Budget utilisation
+              <Gauge className="h-4 w-4 text-primary" />
+              Budget overview
             </div>
-            <div className="text-3xl font-bold">{formatCurrency(spent)}</div>
-            <div className="text-xs text-muted-foreground mb-4">of {formatCurrency(show.budget)} allocated</div>
-            <Progress value={show.progress} />
-            <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-              <div className="rounded-xl border border-border p-3">
-                <div className="text-muted-foreground">Remaining</div>
-                <div className="font-semibold mt-0.5">{formatCurrency(show.budget - spent)}</div>
-              </div>
-              <div className="rounded-xl border border-border p-3">
-                <div className="text-muted-foreground">Burn rate</div>
-                <div className="font-semibold mt-0.5">{formatCurrency(Math.round(spent / 6))}/mo</div>
-              </div>
+
+            <div className="text-3xl font-bold">
+              {formatCurrency(
+                show.estimatedBudget
+              )}
+            </div>
+
+            <div className="text-xs text-muted-foreground mt-1">
+              Estimated production budget
+            </div>
+
+            <div className="mt-5">
+              <Progress
+                value={getStatusProgress(
+                  show.status
+                )}
+              />
             </div>
           </Card>
 
           <Card>
             <div className="flex items-center gap-2 text-sm font-semibold mb-4">
-              <Clapperboard className="h-4 w-4 text-primary" /> Assigned team
+              <Clapperboard className="h-4 w-4 text-primary" />
+              Creator
             </div>
-            <ul className="space-y-3">
-              {[
-                { name: show.creator, role: "Creator" },
-                { name: "Marco Herrera", role: "Producer" },
-                { name: "Elias Ward", role: "Director" },
-                { name: "Ava Chen", role: "Content Manager" },
-              ].map((p, i) => (
-                <li key={p.role} className="flex items-center gap-3">
-                  <img src={`https://i.pravatar.cc/64?img=${20 + i * 5}`} alt="" className="h-8 w-8 rounded-full object-cover" />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">{p.name}</div>
-                    <div className="text-xs text-muted-foreground">{p.role}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 rounded-full bg-primary/10 text-primary grid place-items-center">
+                <Users2 className="h-5 w-5" />
+              </div>
+
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">
+                  {creatorName}
+                </div>
+
+                <div className="text-xs text-muted-foreground truncate">
+                  {creatorEmail}
+                </div>
+              </div>
+            </div>
           </Card>
 
           <Card>
-            <div className="text-sm font-semibold mb-3">Workflow actions</div>
-            <div className="space-y-2">
-              <button className="w-full h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition">Advance stage</button>
-              <button className="w-full h-10 rounded-xl border border-border text-sm hover:bg-accent transition">Request changes</button>
-              <button className="w-full h-10 rounded-xl border border-border text-sm hover:bg-destructive/20 hover:text-destructive transition">Put on hold</button>
+            <div className="text-sm font-semibold mb-3">
+              Show information
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <InfoRow
+                label="Show ID"
+                value={`SH-${show.showId}`}
+              />
+
+              <InfoRow
+                label="Status"
+                value={statusLabel(
+                  show.status
+                )}
+              />
+
+              <InfoRow
+                label="Language"
+                value={
+                  show.language || "Not specified"
+                }
+              />
+
+              <InfoRow
+                label="Target audience"
+                value={
+                  show.targetAudience ||
+                  "Not specified"
+                }
+              />
+
+              <InfoRow
+                label="Release"
+                value={formatDate(
+                  show.expectedReleaseDate
+                )}
+              />
             </div>
           </Card>
         </div>
@@ -185,11 +432,45 @@ function ShowDetail() {
   );
 }
 
-function Fact({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Fact({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
   return (
     <div className="rounded-xl border border-border p-4">
-      <div className="flex items-center gap-2 text-muted-foreground text-[10px] uppercase tracking-widest">{icon}{label}</div>
-      <div className="mt-1.5 text-lg font-bold truncate">{value}</div>
+      <div className="flex items-center gap-2 text-muted-foreground text-[10px] uppercase tracking-widest">
+        {icon}
+        {label}
+      </div>
+
+      <div className="mt-1.5 text-lg font-bold truncate">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-muted-foreground">
+        {label}
+      </span>
+
+      <span className="font-medium text-right">
+        {value}
+      </span>
     </div>
   );
 }

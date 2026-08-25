@@ -1,31 +1,274 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { DashboardLayout, PageHeader } from "@/components/layout/DashboardLayout";
+import {
+  createFileRoute,
+  Link,
+} from "@tanstack/react-router";
+
+import {
+  DashboardLayout,
+  PageHeader,
+} from "@/components/layout/DashboardLayout";
+
 import { Card } from "@/components/ui-kit";
-import { Check, UploadCloud, FileText, ImageIcon, ArrowRight, ArrowLeft, PartyPopper } from "lucide-react";
+
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Clapperboard,
+  DollarSign,
+  FileText,
+  PartyPopper,
+  Send,
+} from "lucide-react";
+
 import { useState } from "react";
 
-export const Route = createFileRoute("/shows/new")({
+import {
+  createShow,
+  type ShowRequest,
+} from "@/api/shows";
+
+export const Route = createFileRoute(
+  "/shows/new"
+)({
   head: () => ({
     meta: [
-      { title: "Submit a Show — Netflix Show Manager" },
-      { name: "description", content: "Submit a new original show for evaluation and production." },
+      {
+        title:
+          "Submit a Show — Netflix Show Manager",
+      },
+      {
+        name: "description",
+        content:
+          "Submit a new original show for evaluation and production.",
+      },
     ],
   }),
+
   component: NewShow,
 });
 
 const steps = [
-  { id: 1, label: "Basic Info" },
-  { id: 2, label: "Production" },
-  { id: 3, label: "Assets" },
-  { id: 4, label: "Review" },
+  {
+    id: 1,
+    label: "Basic Info",
+  },
+  {
+    id: 2,
+    label: "Budget & Release",
+  },
+  {
+    id: 3,
+    label: "Review",
+  },
 ];
+
+interface FormState {
+  title: string;
+  description: string;
+  synopsis: string;
+  language: string;
+  targetAudience: string;
+  estimatedBudget: string;
+  expectedReleaseDate: string;
+}
+
+function getCurrentUserId(): number | null {
+  try {
+    const stored =
+      localStorage.getItem(
+        "streamforge_user"
+      );
+
+    if (!stored) return null;
+
+    const user = JSON.parse(stored);
+
+    return (
+      Number(
+        user.userId ??
+          user.id ??
+          user.user_id
+      ) || null
+    );
+  } catch {
+    return null;
+  }
+}
 
 function NewShow() {
   const [step, setStep] = useState(1);
-  const [done, setDone] = useState(false);
 
-  if (done) {
+  const [submitted, setSubmitted] =
+    useState(false);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [form, setForm] =
+    useState<FormState>({
+      title: "",
+      description: "",
+      synopsis: "",
+      language: "",
+      targetAudience: "",
+      estimatedBudget: "",
+      expectedReleaseDate: "",
+    });
+
+  function updateField(
+    field: keyof FormState,
+    value: string
+  ) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function validateStep() {
+    setError("");
+
+    if (step === 1) {
+      if (!form.title.trim()) {
+        setError(
+          "Show title is required."
+        );
+        return false;
+      }
+
+      if (form.title.trim().length < 2) {
+        setError(
+          "Show title must contain at least 2 characters."
+        );
+        return false;
+      }
+    }
+
+    if (step === 2) {
+      if (
+        form.estimatedBudget &&
+        Number(form.estimatedBudget) < 0
+      ) {
+        setError(
+          "Estimated budget cannot be negative."
+        );
+        return false;
+      }
+
+      if (form.expectedReleaseDate) {
+        const selected =
+          new Date(
+            `${form.expectedReleaseDate}T00:00:00`
+          );
+
+        const today = new Date();
+
+        today.setHours(0, 0, 0, 0);
+
+        if (selected < today) {
+          setError(
+            "Expected release date cannot be in the past."
+          );
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  function nextStep() {
+    if (!validateStep()) return;
+
+    setStep((current) =>
+      Math.min(
+        steps.length,
+        current + 1
+      )
+    );
+  }
+
+  function previousStep() {
+    setError("");
+
+    setStep((current) =>
+      Math.max(1, current - 1)
+    );
+  }
+
+  async function submitShow() {
+    setError("");
+
+    const creatorId =
+      getCurrentUserId();
+
+    if (!creatorId) {
+      setError(
+        "Unable to identify the logged-in user. Please sign in again."
+      );
+      return;
+    }
+
+    if (!form.title.trim()) {
+      setError(
+        "Show title is required."
+      );
+      setStep(1);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const request: ShowRequest = {
+        title: form.title.trim(),
+
+        description:
+          form.description.trim() || undefined,
+
+        synopsis:
+          form.synopsis.trim() || undefined,
+
+        language:
+          form.language.trim() || undefined,
+
+        targetAudience:
+          form.targetAudience.trim() ||
+          undefined,
+
+        estimatedBudget:
+          form.estimatedBudget
+            ? Number(form.estimatedBudget)
+            : undefined,
+
+        expectedReleaseDate:
+          form.expectedReleaseDate ||
+          undefined,
+
+        status: "PENDING",
+
+        creatorId,
+      };
+
+      await createShow(request);
+
+      setSubmitted(true);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to submit show."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (submitted) {
     return (
       <DashboardLayout>
         <div className="min-h-[60vh] grid place-items-center">
@@ -33,13 +276,30 @@ function NewShow() {
             <div className="mx-auto h-16 w-16 grid place-items-center rounded-2xl bg-success/15 text-success mb-6 animate-pulse-glow">
               <PartyPopper className="h-8 w-8" />
             </div>
-            <h2 className="text-2xl font-bold">Show submitted successfully!</h2>
+
+            <h2 className="text-2xl font-bold">
+              Show submitted successfully!
+            </h2>
+
             <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
-              Your pitch has entered the evaluation queue. You'll be notified as soon as it enters review.
+              Your show has been submitted to the
+              evaluation workflow.
             </p>
+
             <div className="mt-8 flex justify-center gap-2">
-              <Link to="/shows" className="h-10 px-4 rounded-xl border border-border text-sm inline-flex items-center hover:bg-accent transition">Back to shows</Link>
-              <Link to="/dashboard" className="h-10 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center hover:opacity-90 transition">Dashboard</Link>
+              <Link
+                to="/shows"
+                className="h-10 px-4 rounded-xl border border-border text-sm inline-flex items-center hover:bg-accent transition"
+              >
+                Back to shows
+              </Link>
+
+              <Link
+                to="/dashboard"
+                className="h-10 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center hover:opacity-90 transition"
+              >
+                Dashboard
+              </Link>
             </div>
           </Card>
         </div>
@@ -49,23 +309,56 @@ function NewShow() {
 
   return (
     <DashboardLayout>
-      <PageHeader title="Submit a Show" description="Share your vision. Our content team will review within 5 business days." />
+      <PageHeader
+        title="Submit a Show"
+        description="Share your vision. Your submission will be routed to the content team for evaluation."
+      />
 
       <div className="grid lg:grid-cols-[280px_minmax(0,1fr)] gap-6">
-        <Card className="h-fit sticky top-24">
-          <ol className="space-y-4">
-            {steps.map((s) => {
-              const active = s.id === step;
-              const complete = s.id < step;
+        <Card className="h-fit lg:sticky lg:top-24">
+          <ol className="space-y-5">
+            {steps.map((item) => {
+              const active =
+                item.id === step;
+
+              const complete =
+                item.id < step;
+
               return (
-                <li key={s.id} className="flex items-center gap-3">
-                  <div className={`h-8 w-8 rounded-full grid place-items-center text-xs font-bold shrink-0
-                    ${complete ? "bg-success text-success-foreground" : active ? "bg-primary text-primary-foreground shadow-[var(--shadow-glow)]" : "bg-muted text-muted-foreground"}`}>
-                    {complete ? <Check className="h-4 w-4" /> : s.id}
+                <li
+                  key={item.id}
+                  className="flex items-center gap-3"
+                >
+                  <div
+                    className={`h-9 w-9 rounded-full grid place-items-center text-xs font-bold shrink-0 ${
+                      complete
+                        ? "bg-success text-success-foreground"
+                        : active
+                        ? "bg-primary text-primary-foreground shadow-[var(--shadow-glow)]"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {complete ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      item.id
+                    )}
                   </div>
+
                   <div>
-                    <div className={`text-sm font-medium ${active ? "" : "text-muted-foreground"}`}>{s.label}</div>
-                    <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Step {s.id}</div>
+                    <div
+                      className={`text-sm font-medium ${
+                        active
+                          ? ""
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {item.label}
+                    </div>
+
+                    <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                      Step {item.id}
+                    </div>
                   </div>
                 </li>
               );
@@ -74,29 +367,66 @@ function NewShow() {
         </Card>
 
         <Card>
-          {step === 1 && <Step1 />}
-          {step === 2 && <Step2 />}
-          {step === 3 && <Step3 />}
-          {step === 4 && <Step4 />}
+          {error && (
+            <div className="mb-6 rounded-xl border border-destructive/40 bg-destructive/10 text-destructive px-4 py-3 text-sm">
+              {error}
+            </div>
+          )}
+
+          {step === 1 && (
+            <Step1
+              form={form}
+              updateField={updateField}
+            />
+          )}
+
+          {step === 2 && (
+            <Step2
+              form={form}
+              updateField={updateField}
+            />
+          )}
+
+          {step === 3 && (
+            <Step3 form={form} />
+          )}
 
           <div className="mt-8 flex items-center justify-between">
             <button
-              onClick={() => setStep((s) => Math.max(1, s - 1))}
-              disabled={step === 1}
+              onClick={previousStep}
+              disabled={step === 1 || loading}
               className="h-10 px-4 rounded-xl border border-border text-sm inline-flex items-center gap-2 hover:bg-accent transition disabled:opacity-30"
             >
-              <ArrowLeft className="h-4 w-4" /> Back
+              <ArrowLeft className="h-4 w-4" />
+              Back
             </button>
-            {step < 4 ? (
+
+            {step < steps.length ? (
               <button
-                onClick={() => setStep((s) => s + 1)}
-                className="h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 transition shadow-[var(--shadow-glow)]"
+                onClick={nextStep}
+                disabled={loading}
+                className="h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 transition shadow-[var(--shadow-glow)] disabled:opacity-50"
               >
-                Continue <ArrowRight className="h-4 w-4" />
+                Continue
+                <ArrowRight className="h-4 w-4" />
               </button>
             ) : (
-              <button onClick={() => setDone(true)} className="h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition shadow-[var(--shadow-glow)]">
-                Submit for review
+              <button
+                onClick={submitShow}
+                disabled={loading}
+                className="h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 transition shadow-[var(--shadow-glow)] disabled:opacity-50"
+              >
+                {loading ? (
+                  <>
+                    <span className="h-4 w-4 rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4" />
+                    Submit for review
+                  </>
+                )}
               </button>
             )}
           </div>
@@ -106,118 +436,324 @@ function NewShow() {
   );
 }
 
-function Row({ children }: { children: React.ReactNode }) {
-  return <div className="grid sm:grid-cols-2 gap-4">{children}</div>;
-}
-function Fld({ label, children }: { label: string; children: React.ReactNode }) {
+function Step1({
+  form,
+  updateField,
+}: {
+  form: FormState;
+  updateField: (
+    field: keyof FormState,
+    value: string
+  ) => void;
+}) {
   return (
-    <label className="block">
-      <div className="mb-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
-      {children}
-    </label>
-  );
-}
-const inputCls = "w-full h-11 px-3.5 rounded-xl bg-surface border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition";
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
+          <Clapperboard className="h-5 w-5" />
+        </div>
 
-function Step1() {
-  return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold">Basic Information</h3>
-      <Row>
-        <Fld label="Title"><input className={inputCls} defaultValue="Nightfall Protocol" /></Fld>
-        <Fld label="Genre">
-          <select className={inputCls}>
-            <option>Drama</option><option>Thriller</option><option>Sci-Fi</option><option>Comedy</option>
-          </select>
+        <div>
+          <h3 className="text-lg font-semibold">
+            Basic Information
+          </h3>
+
+          <p className="text-xs text-muted-foreground">
+            Tell us about your original.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Fld label="Show title *">
+          <input
+            value={form.title}
+            onChange={(e) =>
+              updateField(
+                "title",
+                e.target.value
+              )
+            }
+            placeholder="Enter show title"
+            className={inputCls}
+          />
         </Fld>
-        <Fld label="Language"><input className={inputCls} defaultValue="English" /></Fld>
-        <Fld label="Target audience"><input className={inputCls} defaultValue="18-49" /></Fld>
-        <Fld label="Episodes"><input type="number" className={inputCls} defaultValue={10} /></Fld>
-        <Fld label="Runtime (min/ep)"><input type="number" className={inputCls} defaultValue={48} /></Fld>
-      </Row>
-      <Fld label="Logline & synopsis">
-        <textarea rows={5} className={`${inputCls.replace("h-11", "min-h-32 py-3")}`} defaultValue="A rogue algorithm awakens overnight and threatens to expose every secret in the city — a young analyst has 72 hours to stop it." />
+
+        <Fld label="Language">
+          <input
+            value={form.language}
+            onChange={(e) =>
+              updateField(
+                "language",
+                e.target.value
+              )
+            }
+            placeholder="English"
+            className={inputCls}
+          />
+        </Fld>
+
+        <Fld label="Target audience">
+          <input
+            value={form.targetAudience}
+            onChange={(e) =>
+              updateField(
+                "targetAudience",
+                e.target.value
+              )
+            }
+            placeholder="18-49"
+            className={inputCls}
+          />
+        </Fld>
+      </div>
+
+      <Fld label="Synopsis">
+        <textarea
+          rows={5}
+          value={form.synopsis}
+          onChange={(e) =>
+            updateField(
+              "synopsis",
+              e.target.value
+            )
+          }
+          placeholder="Give us the story synopsis..."
+          className={textareaCls}
+        />
+      </Fld>
+
+      <Fld label="Description">
+        <textarea
+          rows={5}
+          value={form.description}
+          onChange={(e) =>
+            updateField(
+              "description",
+              e.target.value
+            )
+          }
+          placeholder="Describe the show, concept, characters and vision..."
+          className={textareaCls}
+        />
       </Fld>
     </div>
   );
 }
 
-function Step2() {
+function Step2({
+  form,
+  updateField,
+}: {
+  form: FormState;
+  updateField: (
+    field: keyof FormState,
+    value: string
+  ) => void;
+}) {
   return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold">Budget & Timeline</h3>
-      <Row>
-        <Fld label="Estimated budget (USD)"><input className={inputCls} defaultValue="$12,500,000" /></Fld>
-        <Fld label="Expected ROI"><input className={inputCls} defaultValue="2.4x" /></Fld>
-        <Fld label="Start date"><input type="date" className={inputCls} defaultValue="2026-09-01" /></Fld>
-        <Fld label="Expected release"><input type="date" className={inputCls} defaultValue="2027-04-15" /></Fld>
-        <Fld label="Production location"><input className={inputCls} defaultValue="Seoul · Vancouver" /></Fld>
-        <Fld label="Team size"><input type="number" className={inputCls} defaultValue={48} /></Fld>
-      </Row>
-      <Fld label="Production notes">
-        <textarea rows={4} className={`${inputCls.replace("h-11", "min-h-24 py-3")}`} defaultValue="Practical effects preferred. On-location shoots for exterior scenes; VFX outsourced to studio partners." />
-      </Fld>
-    </div>
-  );
-}
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
+          <DollarSign className="h-5 w-5" />
+        </div>
 
-function Step3() {
-  return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold">Upload Assets</h3>
-      <div className="grid md:grid-cols-2 gap-4">
-        {[
-          { label: "Poster art", desc: "PNG, JPG · up to 20MB", icon: ImageIcon, file: "poster_final_v3.jpg" },
-          { label: "Pitch deck", desc: "PDF · up to 40MB", icon: FileText, file: "nightfall_pitch.pdf" },
-          { label: "Script (Ep. 1)", desc: "PDF, FDX · up to 20MB", icon: FileText, file: "s1e1_script.pdf" },
-          { label: "Additional documents", desc: "Any format", icon: FileText, file: null },
-        ].map((slot) => (
-          <div key={slot.label} className="rounded-2xl border border-dashed border-border p-5 hover:border-primary/50 hover:bg-primary/5 transition cursor-pointer">
-            <div className="flex items-start gap-3">
-              <div className="h-10 w-10 grid place-items-center rounded-xl bg-primary/10 text-primary shrink-0">
-                <slot.icon className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium">{slot.label}</div>
-                <div className="text-xs text-muted-foreground">{slot.desc}</div>
-                {slot.file && (
-                  <div className="mt-3 flex items-center gap-2 text-xs">
-                    <Check className="h-3.5 w-3.5 text-success" />
-                    <span className="truncate">{slot.file}</span>
-                  </div>
-                )}
-              </div>
-              <UploadCloud className="h-5 w-5 text-muted-foreground shrink-0" />
-            </div>
-          </div>
-        ))}
+        <div>
+          <h3 className="text-lg font-semibold">
+            Budget & Release
+          </h3>
+
+          <p className="text-xs text-muted-foreground">
+            Provide the expected production budget
+            and release date.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Fld label="Estimated budget (USD)">
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.estimatedBudget}
+            onChange={(e) =>
+              updateField(
+                "estimatedBudget",
+                e.target.value
+              )
+            }
+            placeholder="12500000"
+            className={inputCls}
+          />
+        </Fld>
+
+        <Fld label="Expected release date">
+          <input
+            type="date"
+            value={form.expectedReleaseDate}
+            onChange={(e) =>
+              updateField(
+                "expectedReleaseDate",
+                e.target.value
+              )
+            }
+            className={inputCls}
+          />
+        </Fld>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface/50 p-4">
+        <div className="text-sm font-medium">
+          Submission status
+        </div>
+
+        <div className="text-xs text-muted-foreground mt-1">
+          New submissions will be created with
+          <span className="text-primary font-semibold">
+            {" "}
+            PENDING
+          </span>{" "}
+          status and routed through your evaluation
+          workflow.
+        </div>
       </div>
     </div>
   );
 }
 
-function Step4() {
+function Step3({
+  form,
+}: {
+  form: FormState;
+}) {
   return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold">Review submission</h3>
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
+          <FileText className="h-5 w-5" />
+        </div>
+
+        <div>
+          <h3 className="text-lg font-semibold">
+            Review Submission
+          </h3>
+
+          <p className="text-xs text-muted-foreground">
+            Check everything before submitting.
+          </p>
+        </div>
+      </div>
+
       <div className="rounded-2xl border border-border divide-y divide-border">
-        {[
-          ["Title", "Nightfall Protocol"],
-          ["Genre / Language", "Drama · English"],
-          ["Episodes", "10 × 48 min"],
-          ["Estimated budget", "$12.5M"],
-          ["Expected release", "April 15, 2027"],
-          ["Assets", "3 files attached"],
-        ].map(([k, v]) => (
-          <div key={k} className="flex items-center justify-between p-4 text-sm">
-            <span className="text-muted-foreground">{k}</span>
-            <span className="font-medium">{v}</span>
-          </div>
-        ))}
+        <ReviewRow
+          label="Title"
+          value={form.title || "—"}
+        />
+
+        <ReviewRow
+          label="Language"
+          value={form.language || "—"}
+        />
+
+        <ReviewRow
+          label="Target audience"
+          value={
+            form.targetAudience || "—"
+          }
+        />
+
+        <ReviewRow
+          label="Estimated budget"
+          value={
+            form.estimatedBudget
+              ? `$${Number(
+                  form.estimatedBudget
+                ).toLocaleString()}`
+              : "—"
+          }
+        />
+
+        <ReviewRow
+          label="Expected release"
+          value={
+            form.expectedReleaseDate ||
+            "—"
+          }
+        />
       </div>
+
+      <div>
+        <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+          Synopsis
+        </div>
+
+        <div className="rounded-xl border border-border p-4 text-sm text-muted-foreground leading-6">
+          {form.synopsis || "No synopsis provided."}
+        </div>
+      </div>
+
+      <div>
+        <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+          Description
+        </div>
+
+        <div className="rounded-xl border border-border p-4 text-sm text-muted-foreground leading-6">
+          {form.description ||
+            "No description provided."}
+        </div>
+      </div>
+
       <p className="text-xs text-muted-foreground">
-        By submitting, you confirm the information is accurate. Your submission will be routed to Content Managers for evaluation.
+        By submitting, you confirm that the information
+        is accurate. The show will be created under
+        your logged-in account and submitted with
+        PENDING status.
       </p>
     </div>
   );
 }
+
+function Fld({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+
+      {children}
+    </label>
+  );
+}
+
+function ReviewRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 p-4 text-sm">
+      <span className="text-muted-foreground">
+        {label}
+      </span>
+
+      <span className="font-medium text-right">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+const inputCls =
+  "w-full h-11 px-3.5 rounded-xl bg-surface border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition";
+
+const textareaCls =
+  "w-full min-h-32 px-3.5 py-3 rounded-xl bg-surface border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition resize-y";
