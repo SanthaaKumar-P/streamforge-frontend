@@ -23,6 +23,7 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as UsersRouteImport } from './routes/users'
+import { Route as ProductionProductionIdRouteImport } from './routes/production.$productionId'
 import { Route as ShowsIndexRouteImport } from './routes/shows.index'
 import { Route as ShowsShowIdRouteImport } from './routes/shows.$showId'
 import { Route as ShowsNewRouteImport } from './routes/shows.new'
@@ -97,6 +98,11 @@ const UsersRoute = UsersRouteImport.update({
   path: '/users',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProductionProductionIdRoute = ProductionProductionIdRouteImport.update({
+  id: '/$productionId',
+  path: '/$productionId',
+  getParentRoute: () => ProductionRoute,
+} as any)
 const ShowsIndexRoute = ShowsIndexRouteImport.update({
   id: '/shows/',
   path: '/shows/',
@@ -122,12 +128,13 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/permissions': typeof PermissionsRoute
-  '/production': typeof ProductionRoute
+  '/production': typeof ProductionRouteWithChildren
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/users': typeof UsersRoute
+  '/production/$productionId': typeof ProductionProductionIdRoute
   '/shows/$showId': typeof ShowsShowIdRoute
   '/shows/new': typeof ShowsNewRoute
   '/shows/': typeof ShowsIndexRoute
@@ -141,12 +148,13 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/permissions': typeof PermissionsRoute
-  '/production': typeof ProductionRoute
+  '/production': typeof ProductionRouteWithChildren
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/users': typeof UsersRoute
+  '/production/$productionId': typeof ProductionProductionIdRoute
   '/shows/$showId': typeof ShowsShowIdRoute
   '/shows/new': typeof ShowsNewRoute
   '/shows': typeof ShowsIndexRoute
@@ -161,12 +169,13 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/permissions': typeof PermissionsRoute
-  '/production': typeof ProductionRoute
+  '/production': typeof ProductionRouteWithChildren
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/users': typeof UsersRoute
+  '/production/$productionId': typeof ProductionProductionIdRoute
   '/shows/$showId': typeof ShowsShowIdRoute
   '/shows/new': typeof ShowsNewRoute
   '/shows/': typeof ShowsIndexRoute
@@ -188,6 +197,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/users'
+    | '/production/$productionId'
     | '/shows/$showId'
     | '/shows/new'
     | '/shows/'
@@ -207,6 +217,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/users'
+    | '/production/$productionId'
     | '/shows/$showId'
     | '/shows/new'
     | '/shows'
@@ -226,6 +237,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/users'
+    | '/production/$productionId'
     | '/shows/$showId'
     | '/shows/new'
     | '/shows/'
@@ -240,7 +252,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
   PermissionsRoute: typeof PermissionsRoute
-  ProductionRoute: typeof ProductionRoute
+  ProductionRoute: typeof ProductionRouteWithChildren
   ProfileRoute: typeof ProfileRoute
   RegisterRoute: typeof RegisterRoute
   ReportsRoute: typeof ReportsRoute
@@ -351,6 +363,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UsersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/production/$productionId': {
+      id: '/production/$productionId'
+      path: '/$productionId'
+      fullPath: '/production/$productionId'
+      preLoaderRoute: typeof ProductionProductionIdRouteImport
+      parentRoute: typeof ProductionRoute
+    }
     '/shows/': {
       id: '/shows/'
       path: '/shows'
@@ -375,6 +394,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ProductionRouteChildren {
+  ProductionProductionIdRoute: typeof ProductionProductionIdRoute
+}
+
+const ProductionRouteChildren: ProductionRouteChildren = {
+  ProductionProductionIdRoute: ProductionProductionIdRoute,
+}
+
+const ProductionRouteWithChildren = ProductionRoute._addFileChildren(
+  ProductionRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
@@ -384,7 +415,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,
   PermissionsRoute: PermissionsRoute,
-  ProductionRoute: ProductionRoute,
+  ProductionRoute: ProductionRouteWithChildren,
   ProfileRoute: ProfileRoute,
   RegisterRoute: RegisterRoute,
   ReportsRoute: ReportsRoute,
