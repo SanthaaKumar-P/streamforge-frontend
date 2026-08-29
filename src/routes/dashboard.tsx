@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
   DashboardLayout,
@@ -8,7 +8,6 @@ import {
 
 import {
   Card,
-  StatCard,
   Chip,
 } from "@/components/ui-kit";
 
@@ -22,15 +21,11 @@ import {
   Users,
   RefreshCw,
   AlertCircle,
-  Bell,
-  BarChart3,
-  TrendingUp,
-  CalendarDays,
-  UserRound,
   ShieldCheck,
   Zap,
   ArrowRight,
   Clapperboard,
+  TrendingUp,
 } from "lucide-react";
 
 import { apiRequest } from "@/api/client";
@@ -57,11 +52,13 @@ export const Route = createFileRoute("/dashboard")({
 ========================================================= */
 
 type ShowStatus =
+  | "DRAFT"
+  | "IN_PRODUCTION"
   | "APPROVED"
-  | "PENDING"
+  | "COMPLETED"
   | "REJECTED"
-  | "REVIEW"
-  | "PRODUCTION"
+  | "UNDER_REVIEW"
+  | "SUBMITTED"
   | string;
 
 interface Creator {
@@ -104,9 +101,14 @@ interface Evaluation {
 
 interface Production {
   productionId: number;
+  showId?: number;
+  producerId?: number;
   productionStatus?: string;
   allocatedBudget?: number;
   actualBudget?: number;
+  startDate?: string;
+  expectedEndDate?: string;
+  completionDate?: string;
   notes?: string;
 }
 
@@ -116,24 +118,31 @@ interface Production {
 
 function normalizeStatus(status?: string) {
   return (status || "")
+    .trim()
     .toUpperCase()
     .replace(/[-\s]/g, "_");
 }
 
 function formatCurrency(value?: number) {
-  if (value === undefined || value === null) {
+  const amount = Number(value || 0);
+
+  if (!amount) {
     return "$0";
   }
 
-  if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000_000_000) {
+    return `$${(amount / 1_000_000_000).toFixed(1)}B`;
   }
 
-  if (value >= 1_000) {
-    return `$${(value / 1_000).toFixed(0)}K`;
+  if (amount >= 1_000_000) {
+    return `$${(amount / 1_000_000).toFixed(1)}M`;
   }
 
-  return `$${value.toLocaleString()}`;
+  if (amount >= 1_000) {
+    return `$${(amount / 1_000).toFixed(0)}K`;
+  }
+
+  return `$${amount.toLocaleString()}`;
 }
 
 function formatDate(date?: string) {
@@ -171,26 +180,38 @@ function AdminDashboard() {
 
   const [loading, setLoading] = useState(true);
 
-  const [refreshing, setRefreshing] =
-    useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [error, setError] = useState("");
 
   /* =======================================================
-     LOAD DATA
+     LOAD DASHBOARD
   ======================================================= */
 
   async function loadDashboard() {
     try {
       setError("");
 
+      /*
+       * -----------------------------------------------------
+       * LOAD SHOWS
+       * -----------------------------------------------------
+       */
+
       const showResponse =
         await apiRequest<Show[]>("/api/shows");
 
-      const loadedShows =
-        showResponse || [];
+      const loadedShows = Array.isArray(showResponse)
+        ? showResponse
+        : [];
 
       setShows(loadedShows);
+
+      /*
+       * -----------------------------------------------------
+       * LOAD EVALUATIONS
+       * -----------------------------------------------------
+       */
 
       const evaluationResults =
         await Promise.allSettled(
@@ -202,10 +223,16 @@ function AdminDashboard() {
 
             return {
               showId: show.showId,
-              data: data || [],
+              data: Array.isArray(data) ? data : [],
             };
           })
         );
+
+      /*
+       * -----------------------------------------------------
+       * LOAD PRODUCTIONS
+       * -----------------------------------------------------
+       */
 
       const productionResults =
         await Promise.allSettled(
@@ -217,10 +244,16 @@ function AdminDashboard() {
 
             return {
               showId: show.showId,
-              data: data || [],
+              data: Array.isArray(data) ? data : [],
             };
           })
         );
+
+      /*
+       * -----------------------------------------------------
+       * BUILD EVALUATION MAP
+       * -----------------------------------------------------
+       */
 
       const evaluationMap: Record<
         number,
@@ -229,11 +262,16 @@ function AdminDashboard() {
 
       evaluationResults.forEach((result) => {
         if (result.status === "fulfilled") {
-          evaluationMap[
-            result.value.showId
-          ] = result.value.data;
+          evaluationMap[result.value.showId] =
+            result.value.data;
         }
       });
+
+      /*
+       * -----------------------------------------------------
+       * BUILD PRODUCTION MAP
+       * -----------------------------------------------------
+       */
 
       const productionMap: Record<
         number,
@@ -242,9 +280,8 @@ function AdminDashboard() {
 
       productionResults.forEach((result) => {
         if (result.status === "fulfilled") {
-          productionMap[
-            result.value.showId
-          ] = result.value.data;
+          productionMap[result.value.showId] =
+            result.value.data;
         }
       });
 
@@ -281,44 +318,54 @@ function AdminDashboard() {
   ======================================================= */
 
   const statistics = useMemo(() => {
+    /*
+     * Backend ShowStatus values confirmed:
+     *
+     * DRAFT
+     * IN_PRODUCTION
+     * APPROVED
+     * COMPLETED
+     * REJECTED
+     * UNDER_REVIEW
+     * SUBMITTED
+     */
+
     const approved = shows.filter(
       (show) =>
-        normalizeStatus(show.status) ===
-        "APPROVED"
+        normalizeStatus(show.status) === "APPROVED"
     ).length;
 
     const rejected = shows.filter(
       (show) =>
-        normalizeStatus(show.status) ===
-        "REJECTED"
+        normalizeStatus(show.status) === "REJECTED"
     ).length;
 
     const pending = shows.filter((show) => {
-      const status = normalizeStatus(
-        show.status
-      );
+      const status =
+        normalizeStatus(show.status);
 
       return (
-        status === "PENDING" ||
-        status === "REVIEW" ||
-        status === "UNDER_REVIEW"
+        status === "UNDER_REVIEW" ||
+        status === "SUBMITTED"
       );
     }).length;
 
-    const production =
-      shows.filter(
-        (show) =>
-          normalizeStatus(
-            show.status
-          ) === "PRODUCTION"
-      ).length;
+    const production = shows.filter(
+      (show) =>
+        normalizeStatus(show.status) ===
+        "IN_PRODUCTION"
+    ).length;
+
+    const completed = shows.filter(
+      (show) =>
+        normalizeStatus(show.status) ===
+        "COMPLETED"
+    ).length;
 
     const budget = shows.reduce(
       (sum, show) =>
         sum +
-        Number(
-          show.estimatedBudget || 0
-        ),
+        Number(show.estimatedBudget || 0),
       0
     );
 
@@ -328,11 +375,23 @@ function AdminDashboard() {
           (show) =>
             show.creator?.userId
         )
-        .filter(Boolean)
+        .filter(
+          (
+            userId
+          ): userId is number =>
+            typeof userId === "number"
+        )
     );
 
     const evaluationCount =
       Object.values(evaluations).reduce(
+        (sum, list) =>
+          sum + list.length,
+        0
+      );
+
+    const productionCount =
+      Object.values(productions).reduce(
         (sum, list) =>
           sum + list.length,
         0
@@ -344,36 +403,31 @@ function AdminDashboard() {
       pending,
       rejected,
       production,
+      completed,
       budget,
       creators: creators.size,
       evaluations: evaluationCount,
+      productionCount,
     };
   }, [
     shows,
     evaluations,
+    productions,
   ]);
 
   /* =======================================================
-     GENRE / LANGUAGE DISTRIBUTION
-     
-     Your current ShowResponse does not contain genre.
-     Therefore we use language as the real available
-     categorical distribution instead of inventing genre.
+     LANGUAGE DISTRIBUTION
   ======================================================= */
 
   const distribution = useMemo(() => {
-    const map: Record<
-      string,
-      number
-    > = {};
+    const map: Record<string, number> = {};
 
     shows.forEach((show) => {
-      const key =
-        show.language ||
-        "Other";
+      const language =
+        show.language?.trim() || "Other";
 
-      map[key] =
-        (map[key] || 0) + 1;
+      map[language] =
+        (map[language] || 0) + 1;
     });
 
     return Object.entries(map)
@@ -389,14 +443,11 @@ function AdminDashboard() {
     return shows
       .filter((show) => {
         const status =
-          normalizeStatus(
-            show.status
-          );
+          normalizeStatus(show.status);
 
         return (
-          status === "PENDING" ||
-          status === "REVIEW" ||
-          status === "UNDER_REVIEW"
+          status === "UNDER_REVIEW" ||
+          status === "SUBMITTED"
         );
       })
       .slice(0, 5);
@@ -404,96 +455,95 @@ function AdminDashboard() {
 
   /* =======================================================
      RECENT ACTIVITY
-     
-     Since there is no activity endpoint shown yet,
-     create activity from actual show records.
   ======================================================= */
 
-  const recentActivity =
-    useMemo(() => {
-      return [...shows]
-        .sort(
-          (a, b) =>
-            b.showId - a.showId
-        )
-        .slice(0, 6)
-        .map((show) => ({
-          id: show.showId,
-          title: show.title,
-          creator:
-            show.creator?.fullName ||
-            show.creator?.username ||
-            "Unknown creator",
-          status:
-            normalizeStatus(
-              show.status
-            ),
-        }));
-    }, [shows]);
+  const recentActivity = useMemo(() => {
+    return [...shows]
+      .sort(
+        (a, b) =>
+          b.showId - a.showId
+      )
+      .slice(0, 6)
+      .map((show) => ({
+        id: show.showId,
+        title: show.title,
+        creator:
+          show.creator?.fullName ||
+          show.creator?.username ||
+          "Unknown creator",
+        status:
+          normalizeStatus(show.status),
+        releaseDate:
+          show.expectedReleaseDate,
+      }));
+  }, [shows]);
 
   /* =======================================================
-     EVALUATION SCORE
+     AVERAGE EVALUATION SCORE
   ======================================================= */
 
-  const averageScore =
-    useMemo(() => {
-      const all =
-        Object.values(
-          evaluations
-        ).flat();
+  const averageScore = useMemo(() => {
+    const all =
+      Object.values(evaluations).flat();
 
-      const scores = all
-        .map((item) =>
+    const scores = all
+      .map((item) =>
+        Number(item.overallScore)
+      )
+      .filter(
+        (score) =>
+          !Number.isNaN(score)
+      );
+
+    if (!scores.length) {
+      return 0;
+    }
+
+    return (
+      scores.reduce(
+        (a, b) => a + b,
+        0
+      ) / scores.length
+    );
+  }, [evaluations]);
+
+  /* =======================================================
+     PRODUCTION BUDGET
+  ======================================================= */
+
+  const productionBudget = useMemo(() => {
+    return Object.values(productions)
+      .flat()
+      .reduce(
+        (sum, production) =>
+          sum +
           Number(
-            item.overallScore
-          )
-        )
-        .filter(
-          (score) =>
-            !Number.isNaN(score)
-        );
-
-      if (!scores.length) {
-        return 0;
-      }
-
-      return (
-        scores.reduce(
-          (a, b) => a + b,
-          0
-        ) / scores.length
+            production.allocatedBudget || 0
+          ),
+        0
       );
-    }, [evaluations]);
+  }, [productions]);
 
   /* =======================================================
-     BUDGET GRAPH DATA
+     BUDGET GRAPH
   ======================================================= */
 
-  const budgetGraph =
-    useMemo(() => {
-      const sorted = [...shows]
-        .sort(
-          (a, b) =>
-            a.showId - b.showId
-        )
-        .slice(-8);
+  const budgetGraph = useMemo(() => {
+    const sorted = [...shows]
+      .sort(
+        (a, b) =>
+          a.showId - b.showId
+      )
+      .slice(-8);
 
-      if (!sorted.length) {
-        return [];
-      }
-
-      return sorted.map(
-        (show, index) => ({
-          label:
-            `S${index + 1}`,
-          value:
-            Number(
-              show.estimatedBudget ||
-                0
-            ) / 1_000_000,
-        })
-      );
-    }, [shows]);
+    return sorted.map((show) => ({
+      label: `#${show.showId}`,
+      value:
+        Number(
+          show.estimatedBudget || 0
+        ) / 1_000_000,
+    }));
+  }, [shows]);
 
   /* =======================================================
      LOADING
@@ -510,9 +560,9 @@ function AdminDashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {Array.from({
             length: 8,
-          }).map((_, i) => (
+          }).map((_, index) => (
             <Card
-              key={i}
+              key={index}
               className="animate-pulse"
             >
               <div className="h-3 w-24 bg-muted rounded" />
@@ -523,14 +573,14 @@ function AdminDashboard() {
         </div>
 
         <div className="mt-6 grid lg:grid-cols-3 gap-4">
-  <Card className="lg:col-span-2">
-    <div className="h-72 animate-pulse rounded-xl bg-muted" />
-  </Card>
+          <Card className="lg:col-span-2">
+            <div className="h-72 animate-pulse rounded-xl bg-muted" />
+          </Card>
 
-  <Card>
-    <div className="h-72 animate-pulse rounded-xl bg-muted" />
-  </Card>
-</div>
+          <Card>
+            <div className="h-72 animate-pulse rounded-xl bg-muted" />
+          </Card>
+        </div>
       </DashboardLayout>
     );
   }
@@ -549,7 +599,7 @@ function AdminDashboard() {
 
         <Card className="border-red-500/30">
           <div className="flex gap-4">
-            <div className="h-10 w-10 rounded-xl bg-red-500/10 text-red-500 grid place-items-center">
+            <div className="h-10 w-10 rounded-xl bg-red-500/10 text-red-500 grid place-items-center shrink-0">
               <AlertCircle className="h-5 w-5" />
             </div>
 
@@ -563,9 +613,7 @@ function AdminDashboard() {
               </p>
 
               <button
-                onClick={
-                  handleRefresh
-                }
+                onClick={handleRefresh}
                 className="mt-4 h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm"
               >
                 Try again
@@ -578,7 +626,7 @@ function AdminDashboard() {
   }
 
   /* =======================================================
-     MAIN
+     MAIN DASHBOARD
   ======================================================= */
 
   return (
@@ -589,9 +637,7 @@ function AdminDashboard() {
         actions={
           <>
             <button
-              onClick={
-                handleRefresh
-              }
+              onClick={handleRefresh}
               disabled={refreshing}
               className="
                 hidden md:inline-flex
@@ -602,6 +648,7 @@ function AdminDashboard() {
                 text-sm
                 hover:bg-accent
                 transition
+                disabled:opacity-50
               "
             >
               <RefreshCw
@@ -636,7 +683,7 @@ function AdminDashboard() {
       />
 
       {/* ===================================================
-          8 KPI CARDS
+          KPI CARDS
       =================================================== */}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -669,9 +716,7 @@ function AdminDashboard() {
 
         <DashboardStat
           label="In Production"
-          value={
-            statistics.production
-          }
+          value={statistics.production}
           icon={
             <Activity className="h-4 w-4" />
           }
@@ -689,9 +734,7 @@ function AdminDashboard() {
 
         <DashboardStat
           label="Creators"
-          value={
-            statistics.creators
-          }
+          value={statistics.creators}
           icon={
             <Users className="h-4 w-4" />
           }
@@ -711,18 +754,48 @@ function AdminDashboard() {
 
         <DashboardStat
           label="Evaluations"
-          value={
-            statistics.evaluations
-          }
+          value={statistics.evaluations}
           icon={
-            <SparklesIcon />
+            <TrendingUp className="h-4 w-4" />
           }
           tone="yellow"
         />
       </div>
 
       {/* ===================================================
-          ROW 1 — CHART + DISTRIBUTION
+          SECONDARY LIVE SUMMARY
+      =================================================== */}
+
+      <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MiniSummary
+          label="Completed Shows"
+          value={statistics.completed}
+        />
+
+        <MiniSummary
+          label="Production Records"
+          value={statistics.productionCount}
+        />
+
+        <MiniSummary
+          label="Production Budget"
+          value={formatCurrency(
+            productionBudget
+          )}
+        />
+
+        <MiniSummary
+          label="Average Evaluation"
+          value={
+            averageScore
+              ? `${averageScore.toFixed(2)}/10`
+              : "—"
+          }
+        />
+      </div>
+
+      {/* ===================================================
+          ROW 1 — BUDGET + DISTRIBUTION
       =================================================== */}
 
       <div className="mt-4 grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] gap-4">
@@ -752,7 +825,7 @@ function AdminDashboard() {
           </div>
         </Card>
 
-        {/* DISTRIBUTION */}
+        {/* CONTENT DISTRIBUTION */}
 
         <Card className="min-h-[330px]">
           <div className="flex items-start justify-between">
@@ -771,43 +844,73 @@ function AdminDashboard() {
             </span>
           </div>
 
-          <div className="mt-4 flex items-center justify-center">
+          <div className="mt-4">
             <DonutChart
               data={distribution}
-              total={
-                statistics.total
-              }
+              total={statistics.total}
             />
           </div>
         </Card>
       </div>
 
       {/* ===================================================
-          ROW 2 — BAR CHART + PENDING
+          ROW 2 — PIPELINE + PENDING
       =================================================== */}
 
       <div className="mt-4 grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] gap-4">
         {/* SUBMISSIONS */}
 
         <Card className="min-h-[300px]">
-          <div>
-            <div className="text-sm font-semibold">
-              Submissions vs Approvals
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-sm font-semibold">
+                Show Pipeline
+              </div>
+
+              <div className="text-xs text-muted-foreground">
+                Current status distribution
+              </div>
             </div>
 
-            <div className="text-xs text-muted-foreground">
-              Current show pipeline
-            </div>
+            <Chip variant="info">
+              {statistics.total} shows
+            </Chip>
           </div>
 
           <div className="mt-5">
             <SubmissionChart
-              total={statistics.total}
+              draft={
+                shows.filter(
+                  (show) =>
+                    normalizeStatus(
+                      show.status
+                    ) === "DRAFT"
+                ).length
+              }
+              submitted={
+                shows.filter(
+                  (show) =>
+                    normalizeStatus(
+                      show.status
+                    ) === "SUBMITTED"
+                ).length
+              }
+              review={
+                shows.filter(
+                  (show) =>
+                    normalizeStatus(
+                      show.status
+                    ) === "UNDER_REVIEW"
+                ).length
+              }
               approved={
                 statistics.approved
               }
-              pending={
-                statistics.pending
+              production={
+                statistics.production
+              }
+              completed={
+                statistics.completed
               }
               rejected={
                 statistics.rejected
@@ -840,62 +943,68 @@ function AdminDashboard() {
           </div>
 
           <div className="mt-4 space-y-1">
-            {pendingShows.length ===
-            0 ? (
-              <div className="py-10 text-center text-sm text-muted-foreground">
-                No pending approvals
+            {pendingShows.length === 0 ? (
+              <div className="py-10 text-center">
+                <CheckCircle2 className="h-8 w-8 mx-auto text-emerald-500 mb-3" />
+
+                <div className="text-sm font-medium">
+                  No pending approvals
+                </div>
+
+                <div className="text-xs text-muted-foreground mt-1">
+                  Everything is up to date.
+                </div>
               </div>
             ) : (
-              pendingShows.map(
-                (show) => (
-                  <div
-                    key={
-                      show.showId
-                    }
-                    className="
-                      flex items-center
-                      gap-3
-                      px-2 py-3
-                      rounded-xl
-                      hover:bg-accent/40
-                    "
-                  >
-                    <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary grid place-items-center shrink-0">
-                      <Clapperboard className="h-4 w-4" />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold truncate">
-                        {
-                          show.title
-                        }
-                      </div>
-
-                      <div className="text-[10px] text-muted-foreground truncate">
-                        {show.creator
-                          ?.fullName ||
-                          show.creator
-                            ?.username ||
-                          "Unknown"}
-                        {" · "}
-                        {show.language ||
-                          "Unknown"}
-                      </div>
-                    </div>
-
-                    <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[9px] font-semibold text-amber-500">
-                      Review
-                    </span>
+              pendingShows.map((show) => (
+                <div
+                  key={show.showId}
+                  className="
+                    flex items-center
+                    gap-3
+                    px-2 py-3
+                    rounded-xl
+                    hover:bg-accent/40
+                    transition
+                  "
+                >
+                  <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary grid place-items-center shrink-0">
+                    <Clapperboard className="h-4 w-4" />
                   </div>
-                )
-              )
+
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold truncate">
+                      {show.title}
+                    </div>
+
+                    <div className="text-[10px] text-muted-foreground truncate">
+                      {show.creator?.fullName ||
+                        show.creator?.username ||
+                        "Unknown creator"}
+
+                      {" · "}
+
+                      {show.language ||
+                        "Unknown"}
+                    </div>
+                  </div>
+
+                  <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[9px] font-semibold text-amber-500 whitespace-nowrap">
+                    {normalizeStatus(
+                      show.status
+                    ) === "SUBMITTED"
+                      ? "Submitted"
+                      : "Review"}
+                  </span>
+                </div>
+              ))
             )}
           </div>
         </Card>
       </div>
 
       {/* ===================================================
-          ROW 3 — ACTIVITY + SYSTEM HEALTH
+          ROW 3 — RECENT ACTIVITY + RELEASES
       =================================================== */}
 
       <div className="mt-4 grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] gap-4">
@@ -909,7 +1018,7 @@ function AdminDashboard() {
               </div>
 
               <div className="text-xs text-muted-foreground">
-                Latest activity from your show pipeline
+                Latest shows from your pipeline
               </div>
             </div>
 
@@ -919,8 +1028,7 @@ function AdminDashboard() {
           </div>
 
           <div className="mt-5">
-            {recentActivity.length ===
-            0 ? (
+            {recentActivity.length === 0 ? (
               <div className="py-10 text-center text-sm text-muted-foreground">
                 No recent activity
               </div>
@@ -932,14 +1040,12 @@ function AdminDashboard() {
                   {recentActivity.map(
                     (item) => (
                       <div
-                        key={
-                          item.id
-                        }
+                        key={item.id}
                         className="relative flex gap-4"
                       >
                         <div className="relative z-10 mt-1 h-3.5 w-3.5 rounded-full bg-primary ring-4 ring-primary/10 shrink-0" />
 
-                        <div>
+                        <div className="min-w-0">
                           <div className="text-xs">
                             <span className="font-semibold">
                               {item.creator}
@@ -951,16 +1057,25 @@ function AdminDashboard() {
                             </span>
 
                             <span className="font-semibold">
-                              {
-                                item.title
-                              }
+                              {item.title}
                             </span>
                           </div>
 
                           <div className="text-[10px] text-muted-foreground mt-1">
                             Status:{" "}
-                            {item.status ||
-                              "Unknown"}
+                            <span className="text-foreground/80">
+                              {item.status ||
+                                "Unknown"}
+                            </span>
+
+                            {item.releaseDate && (
+                              <>
+                                {" · Release: "}
+                                {formatDate(
+                                  item.releaseDate
+                                )}
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -972,58 +1087,142 @@ function AdminDashboard() {
           </div>
         </Card>
 
-        {/* SYSTEM HEALTH */}
+        {/* UPCOMING RELEASES */}
 
         <Card className="min-h-[300px]">
           <div className="flex items-start justify-between">
             <div>
+              <div className="text-sm font-semibold">
+                Upcoming Releases
+              </div>
+
+              <div className="text-xs text-muted-foreground">
+                Scheduled release dates
+              </div>
+            </div>
+
+            <span className="text-[10px] text-primary">
+              LIVE
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {shows
+              .filter(
+                (show) =>
+                  Boolean(
+                    show.expectedReleaseDate
+                  )
+              )
+              .sort(
+                (a, b) =>
+                  new Date(
+                    a.expectedReleaseDate || ""
+                  ).getTime() -
+                  new Date(
+                    b.expectedReleaseDate || ""
+                  ).getTime()
+              )
+              .slice(0, 5)
+              .map((show) => (
+                <div
+                  key={show.showId}
+                  className="
+                    flex items-center
+                    gap-3
+                    rounded-xl
+                    border border-border
+                    p-3
+                  "
+                >
+                  <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary grid place-items-center shrink-0">
+                    <CalendarIcon />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold truncate">
+                      {show.title}
+                    </div>
+
+                    <div className="text-[10px] text-muted-foreground">
+                      {formatDate(
+                        show.expectedReleaseDate
+                      )}
+                    </div>
+                  </div>
+
+                  <span className="text-[9px] uppercase tracking-wide text-muted-foreground">
+                    #{show.showId}
+                  </span>
+                </div>
+              ))}
+
+            {!shows.some(
+              (show) =>
+                Boolean(
+                  show.expectedReleaseDate
+                )
+            ) && (
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                No upcoming releases
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* ===================================================
+          ROW 4 — SYSTEM HEALTH
+      =================================================== */}
+
+      <div className="mt-4">
+        <Card>
+          <div className="flex items-start justify-between">
+            <div>
               <div className="flex items-center gap-2">
                 <div className="text-sm font-semibold">
-                  System healthy
+                  System connected
                 </div>
 
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
               </div>
 
               <div className="text-xs text-muted-foreground">
-                StreamForge services status
+                StreamForge backend data is available.
               </div>
             </div>
 
-            <ShieldCheck className="h-4 w-4 text-emerald-500" />
+            <ShieldCheck className="h-5 w-5 text-emerald-500" />
           </div>
 
-          <div className="mt-6 space-y-5">
-            <HealthBar
-              label="API latency"
-              value="82ms"
-              percentage={82}
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <SystemStatus
+              label="Shows API"
+              value={`${statistics.total} records`}
             />
 
-            <HealthBar
-              label="Storage"
-              value="61%"
-              percentage={61}
+            <SystemStatus
+              label="Evaluations API"
+              value={`${statistics.evaluations} records`}
             />
 
-            <HealthBar
-              label="Queue"
-              value="24%"
-              percentage={24}
+            <SystemStatus
+              label="Productions API"
+              value={`${statistics.productionCount} records`}
             />
           </div>
 
-          <div className="mt-6 rounded-xl border border-border bg-background/30 p-3">
+          <div className="mt-4 rounded-xl border border-border bg-background/30 p-3">
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4 text-primary" />
 
               <div>
                 <div className="text-xs font-semibold">
-                  Backend connected
+                  Live backend connection
                 </div>
 
                 <div className="text-[10px] text-muted-foreground">
-                  Live API data is available.
+                  Dashboard values are loaded from StreamForge APIs.
                 </div>
               </div>
             </div>
@@ -1035,7 +1234,7 @@ function AdminDashboard() {
 }
 
 /* =========================================================
-   STAT CARD
+   DASHBOARD STAT
 ========================================================= */
 
 function DashboardStat({
@@ -1046,7 +1245,7 @@ function DashboardStat({
 }: {
   label: string;
   value: string | number;
-  icon: React.ReactNode;
+  icon: ReactNode;
   tone:
     | "red"
     | "green"
@@ -1059,29 +1258,86 @@ function DashboardStat({
       "bg-emerald-500/10 text-emerald-500",
     yellow:
       "bg-amber-500/10 text-amber-500",
-    blue: "bg-sky-500/10 text-sky-500",
+    blue:
+      "bg-sky-500/10 text-sky-500",
   };
 
   return (
     <Card className="!p-4 relative overflow-hidden">
       <div className="flex justify-between items-start">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground truncate">
             {label}
           </div>
 
-          <div className="text-2xl font-bold mt-2">
+          <div className="text-2xl font-bold mt-2 truncate">
             {value}
           </div>
         </div>
 
         <div
-          className={`h-9 w-9 rounded-full grid place-items-center ${styles[tone]}`}
+          className={`h-9 w-9 rounded-full grid place-items-center shrink-0 ${styles[tone]}`}
         >
           {icon}
         </div>
       </div>
     </Card>
+  );
+}
+
+/* =========================================================
+   MINI SUMMARY
+========================================================= */
+
+function MiniSummary({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <Card className="!p-4">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </div>
+
+      <div className="mt-2 text-lg font-semibold">
+        {value}
+      </div>
+    </Card>
+  );
+}
+
+/* =========================================================
+   SYSTEM STATUS
+========================================================= */
+
+function SystemStatus({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-muted-foreground">
+          {label}
+        </span>
+
+        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+      </div>
+
+      <div className="text-xs font-semibold mt-2">
+        Connected
+      </div>
+
+      <div className="text-[10px] text-muted-foreground mt-1">
+        {value}
+      </div>
+    </div>
   );
 }
 
@@ -1123,13 +1379,12 @@ function BudgetChart({
     paddingTop -
     paddingBottom;
 
-  const max =
-    Math.max(
-      ...data.map(
-        (item) => item.value
-      ),
-      1
-    );
+  const max = Math.max(
+    ...data.map(
+      (item) => item.value
+    ),
+    1
+  );
 
   const points = data.map(
     (item, index) => {
@@ -1163,12 +1418,16 @@ function BudgetChart({
     )
     .join(" ");
 
+  const lastPoint =
+    points[points.length - 1];
+
+  const firstPoint =
+    points[0];
+
   const area = `
     ${line}
-    L ${points[points.length - 1].x}
-      ${paddingTop + chartHeight}
-    L ${points[0].x}
-      ${paddingTop + chartHeight}
+    L ${lastPoint.x} ${paddingTop + chartHeight}
+    L ${firstPoint.x} ${paddingTop + chartHeight}
     Z
   `;
 
@@ -1191,7 +1450,10 @@ function BudgetChart({
             <line
               key={row}
               x1={paddingLeft}
-              x2={width - paddingRight}
+              x2={
+                width -
+                paddingRight
+              }
               y1={y}
               y2={y}
               stroke="currentColor"
@@ -1264,7 +1526,7 @@ function BudgetChart({
 }
 
 /* =========================================================
-   DONUT
+   DONUT CHART
 ========================================================= */
 
 function DonutChart({
@@ -1291,18 +1553,19 @@ function DonutChart({
     "#EC4899",
   ];
 
-  let currentAngle = -90;
-
   const radius = 70;
+
   const circumference =
     2 * Math.PI * radius;
+
+  let accumulated = 0;
 
   return (
     <div className="w-full">
       <div className="relative mx-auto w-[190px] h-[190px]">
         <svg
           viewBox="0 0 200 200"
-          className="w-full h-full -rotate-0"
+          className="w-full h-full"
         >
           <circle
             cx="100"
@@ -1326,12 +1589,11 @@ function DonutChart({
               const gap = 2;
 
               const offset =
-                circumference *
-                (currentAngle + 90) /
-                360;
+                -circumference *
+                accumulated;
 
-              currentAngle +=
-                percentage * 360;
+              accumulated +=
+                percentage;
 
               return (
                 <circle
@@ -1352,7 +1614,7 @@ function DonutChart({
                     0
                   )} ${circumference}`}
                   strokeDashoffset={
-                    -offset
+                    offset
                   }
                   strokeLinecap="butt"
                   transform="rotate(-90 100 100)"
@@ -1409,31 +1671,43 @@ function DonutChart({
 }
 
 /* =========================================================
-   SUBMISSION CHART
+   SUBMISSION / PIPELINE CHART
 ========================================================= */
 
 function SubmissionChart({
-  total,
+  draft,
+  submitted,
+  review,
   approved,
-  pending,
+  production,
+  completed,
   rejected,
 }: {
-  total: number;
+  draft: number;
+  submitted: number;
+  review: number;
   approved: number;
-  pending: number;
+  production: number;
+  completed: number;
   rejected: number;
 }) {
   const values = [
-    total,
+    draft,
+    submitted,
+    review,
     approved,
-    pending,
+    production,
+    completed,
     rejected,
   ];
 
   const labels = [
+    "Draft",
     "Submitted",
-    "Approved",
     "Review",
+    "Approved",
+    "Production",
+    "Completed",
     "Rejected",
   ];
 
@@ -1444,7 +1718,7 @@ function SubmissionChart({
 
   return (
     <div>
-      <div className="h-[205px] flex items-end gap-5 px-3">
+      <div className="h-[205px] flex items-end gap-2 sm:gap-4 px-2 overflow-x-auto">
         {values.map(
           (value, index) => {
             const height =
@@ -1461,7 +1735,7 @@ function SubmissionChart({
                 key={
                   labels[index]
                 }
-                className="flex-1 h-full flex flex-col justify-end items-center"
+                className="flex-1 min-w-[55px] h-full flex flex-col justify-end items-center"
               >
                 <div className="text-[10px] text-muted-foreground mb-2">
                   {value}
@@ -1469,16 +1743,22 @@ function SubmissionChart({
 
                 <div
                   className={`
-                    w-full max-w-[90px]
+                    w-full max-w-[70px]
                     rounded-t-md
                     transition-all
                     ${
                       index === 0
-                        ? "bg-primary"
+                        ? "bg-slate-500"
                         : index === 1
                         ? "bg-sky-400"
                         : index === 2
                         ? "bg-amber-400"
+                        : index === 3
+                        ? "bg-emerald-400"
+                        : index === 4
+                        ? "bg-violet-400"
+                        : index === 5
+                        ? "bg-cyan-400"
                         : "bg-red-500/60"
                     }
                   `}
@@ -1492,12 +1772,12 @@ function SubmissionChart({
         )}
       </div>
 
-      <div className="grid grid-cols-4 gap-5 px-3 mt-2">
+      <div className="grid grid-cols-7 gap-2 sm:gap-4 px-2 mt-2">
         {labels.map(
           (label) => (
             <div
               key={label}
-              className="text-center text-[10px] text-muted-foreground"
+              className="text-center text-[9px] text-muted-foreground"
             >
               {label}
             </div>
@@ -1509,50 +1789,48 @@ function SubmissionChart({
 }
 
 /* =========================================================
-   HEALTH BAR
+   CALENDAR ICON
 ========================================================= */
 
-function HealthBar({
-  label,
-  value,
-  percentage,
-}: {
-  label: string;
-  value: string;
-  percentage: number;
-}) {
+function CalendarIcon() {
   return (
-    <div>
-      <div className="flex items-center justify-between text-[10px] mb-2">
-        <span className="text-muted-foreground">
-          {label}
-        </span>
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect
+        x="3"
+        y="4"
+        width="18"
+        height="18"
+        rx="2"
+      />
 
-        <span className="font-semibold">
-          {value}
-        </span>
-      </div>
+      <line
+        x1="16"
+        y1="2"
+        x2="16"
+        y2="6"
+      />
 
-      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-        <div
-          className="h-full rounded-full bg-primary"
-          style={{
-            width: `${percentage}%`,
-          }}
-        />
-      </div>
-    </div>
-  );
-}
+      <line
+        x1="8"
+        y1="2"
+        x2="8"
+        y2="6"
+      />
 
-/* =========================================================
-   SPARKLE ICON
-========================================================= */
-
-function SparklesIcon() {
-  return (
-    <div className="relative">
-      <TrendingUp className="h-4 w-4" />
-    </div>
+      <line
+        x1="3"
+        y1="10"
+        x2="21"
+        y2="10"
+      />
+    </svg>
   );
 }

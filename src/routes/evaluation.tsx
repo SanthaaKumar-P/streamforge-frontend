@@ -1,93 +1,32 @@
 import { createFileRoute } from "@tanstack/react-router";
+
 import {
   DashboardLayout,
   PageHeader,
 } from "@/components/layout/DashboardLayout";
+
+import { Card, Chip } from "@/components/ui-kit";
+
 import {
-  Card,
-  Chip,
-  Progress,
-} from "@/components/ui-kit";
-import {
-  AlertCircle,
-  CalendarDays,
-  CheckCircle2,
-  Languages,
-  Loader2,
-  MessageSquare,
-  RotateCcw,
+  Plus,
+  RefreshCw,
+  Pencil,
+  Trash2,
+  Eye,
+  X,
   Save,
+  AlertCircle,
+  CheckCircle2,
   Star,
-  User,
-  XCircle,
+  MessageSquare,
+  Send,
 } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { apiRequest } from "@/lib/mock-data";
 
-/* =========================================================
-   TYPES
-========================================================= */
+import { useEffect, useState } from "react";
 
-type EvaluationDecision =
-  | "APPROVED"
-  | "REJECTED"
-  | "REVISION_REQUIRED";
+import { apiRequest } from "@/lib/api";
 
-type UserResponse = {
-  userId?: number;
-  id?: number;
-  username?: string;
-  fullName?: string;
-  name?: string;
-  email?: string;
-};
-
-type ShowResponse = {
-  showId: number;
-  title: string;
-  description?: string | null;
-  synopsis?: string | null;
-  language?: string | null;
-  targetAudience?: string | null;
-  estimatedBudget?: number | string | null;
-  expectedReleaseDate?: string | null;
-  status?: string | null;
-  creator?: UserResponse | null;
-};
-
-type EvaluationResponse = {
-  evaluationId: number;
-  originalityScore: number;
-  creativityScore: number;
-  marketPotentialScore: number;
-  feasibilityScore: number;
-  overallScore: number;
-  decision: EvaluationDecision;
-  remarks?: string | null;
-};
-
-type EvaluationScores = {
-  originality: number;
-  creativity: number;
-  marketPotential: number;
-  feasibility: number;
-};
-
-type CriterionKey = keyof EvaluationScores;
-
-type CurrentUser = {
-  userId?: number;
-  id?: number;
-  username?: string;
-  fullName?: string;
-  name?: string;
-  email?: string;
-};
+import { cn } from "@/lib/utils";
 
 /* =========================================================
    ROUTE
@@ -102,244 +41,304 @@ export const Route = createFileRoute("/evaluation")({
       {
         name: "description",
         content:
-          "Evaluate submitted shows across originality, creativity, market potential and feasibility.",
+          "Evaluate submitted shows and manage evaluation decisions.",
+      },
+      {
+        property: "og:title",
+        content:
+          "Evaluation — Netflix Show Manager",
+      },
+      {
+        property: "og:description",
+        content:
+          "Evaluate submitted shows and manage content evaluation decisions.",
       },
     ],
   }),
 
-  component: Evaluation,
+  component: EvaluationPage,
 });
 
 /* =========================================================
-   CRITERIA
+   CONSTANTS
 ========================================================= */
 
-const criteria: {
-  key: CriterionKey;
-  label: string;
-  description: string;
-}[] = [
+const DECISIONS = [
   {
-    key: "originality",
-    label: "Originality",
-    description:
-      "Uniqueness and freshness of the concept.",
+    value: "APPROVED",
+    label: "Approved",
   },
   {
-    key: "creativity",
-    label: "Creativity",
-    description:
-      "Creative strength and storytelling potential.",
+    value: "REJECTED",
+    label: "Rejected",
   },
   {
-    key: "marketPotential",
-    label: "Market Potential",
-    description:
-      "Audience demand and commercial potential.",
+    value: "REVISION_REQUIRED",
+    label: "Revision Required",
   },
-  {
-    key: "feasibility",
-    label: "Production Feasibility",
-    description:
-      "Practicality of producing the proposed show.",
-  },
-];
+] as const;
 
 /* =========================================================
-   STATUS HELPERS
+   TYPES
 ========================================================= */
 
-function formatStatus(
-  status?: string | null,
-): string {
-  if (!status) {
-    return "Unknown";
-  }
+type EvaluationDecision =
+  | "APPROVED"
+  | "REJECTED"
+  | "REVISION_REQUIRED";
 
-  return status
-    .toLowerCase()
-    .replace(/_/g, " ")
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (char) =>
-      char.toUpperCase(),
+interface Evaluation {
+  evaluationId: number;
+  originalityScore: number;
+  creativityScore: number;
+  marketPotentialScore: number;
+  feasibilityScore: number;
+  overallScore: number;
+  decision: EvaluationDecision;
+  remarks: string | null;
+}
+
+interface EvaluationRequest {
+  showId: number;
+  evaluatorId: number;
+  originalityScore: number;
+  creativityScore: number;
+  marketPotentialScore: number;
+  feasibilityScore: number;
+  overallScore: number;
+  decision: EvaluationDecision | "";
+  remarks: string;
+}
+
+interface EvaluationComment {
+  commentId: number;
+  comment: string;
+  userId: number;
+  evaluationId: number;
+}
+
+interface EvaluationCommentRequest {
+  evaluationId: number;
+  userId: number;
+  comment: string;
+}
+
+/* =========================================================
+   DELETE API HELPER
+   IMPORTANT:
+   Backend DELETE returns plain text.
+========================================================= */
+
+async function deleteRequest(
+  endpoint: string
+): Promise<void> {
+  const API_BASE_URL =
+    import.meta.env.VITE_API_BASE_URL ||
+    "http://localhost:8080";
+
+  const token =
+    localStorage.getItem(
+      "streamforge_token"
     );
-}
 
-function getStatusVariant(
-  status?: string | null,
-):
-  | "default"
-  | "success"
-  | "warning"
-  | "danger"
-  | "info"
-  | "primary" {
-  switch (status?.toUpperCase()) {
-    case "APPROVED":
-      return "success";
+  if (!token) {
+    window.location.href = "/login";
 
-    case "REJECTED":
-      return "danger";
-
-    case "PRODUCTION":
-    case "IN_PRODUCTION":
-      return "primary";
-
-    case "REVIEW":
-    case "UNDER_REVIEW":
-    case "PENDING":
-      return "warning";
-
-    case "DRAFT":
-      return "info";
-
-    default:
-      return "default";
-  }
-}
-
-function formatDecision(
-  decision?: EvaluationDecision | null,
-): string {
-  switch (decision) {
-    case "APPROVED":
-      return "Approved";
-
-    case "REJECTED":
-      return "Rejected";
-
-    case "REVISION_REQUIRED":
-      return "Revision required";
-
-    default:
-      return "Not decided";
-  }
-}
-
-/* =========================================================
-   CREATOR
-========================================================= */
-
-function getCreatorName(
-  creator?: UserResponse | null,
-): string {
-  if (!creator) {
-    return "Unknown creator";
+    throw new Error(
+      "You are not logged in."
+    );
   }
 
-  return (
-    creator.fullName ??
-    creator.name ??
-    creator.username ??
-    creator.email ??
-    "Unknown creator"
-  );
-}
+  const response = await fetch(
+    `${API_BASE_URL}${endpoint}`,
+    {
+      method: "DELETE",
 
-/* =========================================================
-   BUDGET
-========================================================= */
-
-function getBudget(
-  budget?: number | string | null,
-): string {
-  if (
-    budget === null ||
-    budget === undefined ||
-    budget === ""
-  ) {
-    return "Not specified";
-  }
-
-  const value = Number(budget);
-
-  if (Number.isNaN(value)) {
-    return String(budget);
-  }
-
-  if (value >= 1_000_000) {
-    return `$${(
-      value / 1_000_000
-    ).toFixed(1)}M`;
-  }
-
-  if (value >= 1_000) {
-    return `$${(
-      value / 1_000
-    ).toFixed(0)}K`;
-  }
-
-  return `$${value.toLocaleString()}`;
-}
-
-/* =========================================================
-   DATE
-========================================================= */
-
-function formatReleaseDate(
-  date?: string | null,
-): string {
-  if (!date) {
-    return "Not specified";
-  }
-
-  const parts = date.split("-");
-
-  if (parts.length === 3) {
-    const year = Number(parts[0]);
-    const month = Number(parts[1]);
-    const day = Number(parts[2]);
-
-    if (
-      Number.isInteger(year) &&
-      Number.isInteger(month) &&
-      Number.isInteger(day)
-    ) {
-      return new Date(
-        year,
-        month - 1,
-        day,
-      ).toLocaleDateString();
+      headers: {
+        Authorization:
+          `Bearer ${token}`,
+      },
     }
+  );
+
+  /* =======================================================
+     SESSION EXPIRED
+  ======================================================= */
+
+  if (response.status === 401) {
+    localStorage.removeItem(
+      "streamforge_token"
+    );
+
+    localStorage.removeItem(
+      "streamforge_user"
+    );
+
+    window.location.href =
+      "/login";
+
+    throw new Error(
+      "Session expired"
+    );
   }
 
-  return date;
+  /* =======================================================
+     ACCESS DENIED
+  ======================================================= */
+
+  if (response.status === 403) {
+    throw new Error(
+      "Access denied"
+    );
+  }
+
+  /* =======================================================
+     OTHER ERROR
+  ======================================================= */
+
+  if (!response.ok) {
+    let message =
+      "Delete operation failed.";
+
+    try {
+      const contentType =
+        response.headers.get(
+          "content-type"
+        );
+
+      if (
+        contentType?.includes(
+          "application/json"
+        )
+      ) {
+        const error =
+          await response.json();
+
+        message =
+          error.message ||
+          error.error ||
+          message;
+      } else {
+        const text =
+          await response.text();
+
+        if (text.trim()) {
+          message = text;
+        }
+      }
+    } catch {
+      // Ignore error parsing failure
+    }
+
+    throw new Error(message);
+  }
+
+  /*
+   * IMPORTANT:
+   *
+   * Do NOT call response.json()
+   *
+   * Backend returns:
+   *
+   * "Evaluation deleted successfully"
+   *
+   * or:
+   *
+   * "Evaluation comment deleted successfully"
+   *
+   * which is plain text.
+   */
+
+  await response.text();
 }
 
 /* =========================================================
-   CURRENT USER
+   AUTH HELPERS
 ========================================================= */
 
-function getCurrentUser(): CurrentUser | null {
+function getLoggedInUserId(): number | null {
   try {
-    const possibleKeys = [
-      "streamforge_user",
-      "currentUser",
-      "user",
-      "authUser",
-    ];
+    const storedUser =
+      localStorage.getItem(
+        "streamforge_user"
+      );
 
-    for (const key of possibleKeys) {
-      const stored =
-        localStorage.getItem(key);
+    if (storedUser) {
+      const user = JSON.parse(
+        storedUser
+      );
 
-      if (!stored) {
-        continue;
-      }
+      const possibleIds = [
+        user?.userId,
+        user?.id,
+        user?.user?.userId,
+        user?.user?.id,
+        user?.data?.userId,
+        user?.data?.id,
+      ];
 
-      try {
-        const parsed =
-          JSON.parse(stored);
+      for (const value of possibleIds) {
+        const id = Number(value);
 
         if (
-          parsed &&
-          typeof parsed === "object"
+          Number.isInteger(id) &&
+          id > 0
         ) {
-          return parsed as CurrentUser;
+          return id;
         }
-      } catch {
-        // Try next key
       }
+    }
+
+    /* JWT FALLBACK */
+
+    const token =
+      localStorage.getItem(
+        "streamforge_token"
+      );
+
+    if (!token) {
+      return null;
+    }
+
+    const parts =
+      token.split(".");
+
+    if (parts.length !== 3) {
+      return null;
+    }
+
+    try {
+      const base64Payload =
+        parts[1]
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+
+      const payload =
+        JSON.parse(
+          atob(base64Payload)
+        );
+
+      const possibleIds = [
+        payload?.userId,
+        payload?.id,
+        payload?.uid,
+        payload?.sub,
+        payload?.user?.userId,
+        payload?.user?.id,
+      ];
+
+      for (const value of possibleIds) {
+        const id = Number(value);
+
+        if (
+          Number.isInteger(id) &&
+          id > 0
+        ) {
+          return id;
+        }
+      }
+    } catch {
+      // Ignore invalid JWT
     }
 
     return null;
@@ -349,1354 +348,2608 @@ function getCurrentUser(): CurrentUser | null {
 }
 
 /* =========================================================
-   COMPONENT
+   USERNAME
 ========================================================= */
 
-function Evaluation() {
-  /* =======================================================
-     SHOWS
-  ======================================================= */
+function getLoggedInUsername(): string {
+  try {
+    const storedUser =
+      localStorage.getItem(
+        "streamforge_user"
+      );
 
-  const [shows, setShows] =
-    useState<ShowResponse[]>([]);
+    if (!storedUser) {
+      return "Unknown user";
+    }
 
-  const [
-    selectedShow,
-    setSelectedShow,
-  ] = useState<ShowResponse | null>(
-    null,
-  );
+    const user =
+      JSON.parse(storedUser);
 
-  const [
-    loadingShows,
-    setLoadingShows,
-  ] = useState(true);
-
-  /* =======================================================
-     EXISTING EVALUATION
-  ======================================================= */
-
-  const [
-    existingEvaluation,
-    setExistingEvaluation,
-  ] = useState<EvaluationResponse | null>(
-    null,
-  );
-
-  const [
-    loadingEvaluation,
-    setLoadingEvaluation,
-  ] = useState(false);
-
-  /* =======================================================
-     SCORES
-  ======================================================= */
-
-  const [scores, setScores] =
-    useState<EvaluationScores>({
-      originality: 0,
-      creativity: 0,
-      marketPotential: 0,
-      feasibility: 0,
-    });
-
-  /* =======================================================
-     DECISION
-  ======================================================= */
-
-  const [
-    selectedDecision,
-    setSelectedDecision,
-  ] = useState<EvaluationDecision | null>(
-    null,
-  );
-
-  /* =======================================================
-     REMARKS
-  ======================================================= */
-
-  const [remarks, setRemarks] =
-    useState("");
-
-  const remarksRef =
-    useRef<HTMLTextAreaElement | null>(
-      null,
+    return (
+      user?.username ||
+      user?.user?.username ||
+      user?.data?.username ||
+      user?.email ||
+      user?.user?.email ||
+      user?.data?.email ||
+      "Unknown user"
     );
+  } catch {
+    return "Unknown user";
+  }
+}
 
-  /* =======================================================
-     UI
-  ======================================================= */
+/* =========================================================
+   ROLE EXTRACTION
+========================================================= */
 
-  const [saving, setSaving] =
-    useState(false);
+function normalizeRole(
+  value: unknown
+): string {
+  if (
+    typeof value !== "string"
+  ) {
+    return "";
+  }
 
-  const [
-    successMessage,
-    setSuccessMessage,
-  ] = useState("");
+  return value
+    .replace(/^ROLE_/i, "")
+    .trim()
+    .toUpperCase();
+}
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] = useState("");
+function extractRole(
+  value: unknown
+): string {
+  if (!value) {
+    return "";
+  }
 
-  /* =======================================================
-     DISCUSSION
-  ======================================================= */
+  if (
+    typeof value === "string"
+  ) {
+    return normalizeRole(
+      value
+    );
+  }
 
-  const [
-    discussionOpen,
-    setDiscussionOpen,
-  ] = useState(false);
+  if (
+    Array.isArray(value)
+  ) {
+    for (const item of value) {
+      const role =
+        extractRole(item);
 
-  /* =======================================================
-     LOAD SHOWS
-  ======================================================= */
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadShows() {
-      try {
-        setLoadingShows(true);
-        setErrorMessage("");
-        setSuccessMessage("");
-
-        const response =
-          await apiRequest<ShowResponse[]>(
-            "/api/shows",
-          );
-
-        if (!mounted) {
-          return;
-        }
-
-        const loadedShows =
-          Array.isArray(response)
-            ? response
-            : [];
-
-        setShows(loadedShows);
-
-        if (loadedShows.length > 0) {
-          setSelectedShow(
-            loadedShows[0],
-          );
-        } else {
-          setSelectedShow(null);
-        }
-      } catch (error) {
-        if (!mounted) {
-          return;
-        }
-
-        console.error(
-          "Failed to load shows:",
-          error,
-        );
-
-        setShows([]);
-        setSelectedShow(null);
-
-        setErrorMessage(
-          error instanceof Error
-            ? error.message
-            : "Failed to load shows.",
-        );
-      } finally {
-        if (mounted) {
-          setLoadingShows(false);
-        }
+      if (role) {
+        return role;
       }
     }
 
-    loadShows();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  /* =======================================================
-     LOAD EVALUATION
-     
-     IMPORTANT:
-     Capture showId BEFORE async function.
-     This fixes:
-     
-     "selectedShow is possibly null"
-  ======================================================= */
-
-  useEffect(() => {
-    if (!selectedShow) {
-      return;
-    }
-
-    /*
-     * DO NOT use selectedShow.showId
-     * inside the nested async function.
-     *
-     * Capture it here.
-     */
-    const showId =
-      selectedShow.showId;
-
-    let mounted = true;
-
-    async function loadEvaluation() {
-      try {
-        setLoadingEvaluation(true);
-        setErrorMessage("");
-        setSuccessMessage("");
-
-        const response =
-          await apiRequest<
-            EvaluationResponse |
-            EvaluationResponse[]
-          >(
-            `/api/evaluations/show/${showId}`,
-          );
-
-        if (!mounted) {
-          return;
-        }
-
-        let evaluation:
-          | EvaluationResponse
-          | null = null;
-
-        /*
-         * Supports both:
-         *
-         * EvaluationResponse
-         *
-         * and
-         *
-         * EvaluationResponse[]
-         */
-        if (Array.isArray(response)) {
-          if (response.length > 0) {
-            evaluation =
-              response[
-                response.length - 1
-              ];
-          }
-        } else if (response) {
-          evaluation = response;
-        }
-
-        setExistingEvaluation(
-          evaluation,
-        );
-
-        if (evaluation) {
-          setScores({
-            originality: Number(
-              evaluation.originalityScore ?? 0,
-            ),
-
-            creativity: Number(
-              evaluation.creativityScore ?? 0,
-            ),
-
-            marketPotential: Number(
-              evaluation.marketPotentialScore ?? 0,
-            ),
-
-            feasibility: Number(
-              evaluation.feasibilityScore ?? 0,
-            ),
-          });
-
-          setSelectedDecision(
-            evaluation.decision,
-          );
-
-          setRemarks(
-            evaluation.remarks ?? "",
-          );
-        } else {
-          setExistingEvaluation(null);
-
-          setScores({
-            originality: 0,
-            creativity: 0,
-            marketPotential: 0,
-            feasibility: 0,
-          });
-
-          setSelectedDecision(null);
-          setRemarks("");
-        }
-      } catch (error) {
-        if (!mounted) {
-          return;
-        }
-
-        console.error(
-          "Failed to load evaluation:",
-          error,
-        );
-
-        /*
-         * No evaluation yet = create mode.
-         */
-        setExistingEvaluation(null);
-
-        setScores({
-          originality: 0,
-          creativity: 0,
-          marketPotential: 0,
-          feasibility: 0,
-        });
-
-        setSelectedDecision(null);
-        setRemarks("");
-
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Failed to load evaluation.";
-
-        const lower =
-          message.toLowerCase();
-
-        /*
-         * A missing evaluation is not
-         * treated as a fatal UI error.
-         */
-        if (
-          !lower.includes("404") &&
-          !lower.includes("not found")
-        ) {
-          setErrorMessage(message);
-        }
-      } finally {
-        if (mounted) {
-          setLoadingEvaluation(false);
-        }
-      }
-    }
-
-    loadEvaluation();
-
-    return () => {
-      mounted = false;
-    };
-  }, [selectedShow]);
-
-  /* =======================================================
-     WEIGHTED SCORE
-     
-     Four backend criteria.
-     Equal weight = 25% each.
-  ======================================================= */
-
-  const weightedScore = useMemo(() => {
-    const total =
-      scores.originality +
-      scores.creativity +
-      scores.marketPotential +
-      scores.feasibility;
-
-    return total / 4;
-  }, [scores]);
-
-  /* =======================================================
-     SCORE UPDATE
-  ======================================================= */
-
-  function updateScore(
-    key: CriterionKey,
-    value: number,
-  ) {
-    if (
-      saving ||
-      loadingEvaluation
-    ) {
-      return;
-    }
-
-    const safeValue = Math.min(
-      10,
-      Math.max(0, value),
-    );
-
-    setScores(
-      (previous) => ({
-        ...previous,
-        [key]: safeValue,
-      }),
-    );
-
-    setSelectedDecision(null);
-    setSuccessMessage("");
-    setErrorMessage("");
+    return "";
   }
 
-  /* =======================================================
-     SELECT SHOW
-  ======================================================= */
-
-  function handleSelectShow(
-    show: ShowResponse,
+  if (
+    typeof value === "object"
   ) {
-    if (saving) {
-      return;
-    }
+    const object =
+      value as Record<
+        string,
+        unknown
+      >;
 
-    setSelectedShow(show);
-
-    setSuccessMessage("");
-    setErrorMessage("");
-    setDiscussionOpen(false);
-  }
-
-  /* =======================================================
-     SUBMIT EVALUATION
-  ======================================================= */
-
-  async function submitEvaluation(
-    decision: EvaluationDecision,
-  ) {
-    if (!selectedShow) {
-      setErrorMessage(
-        "Please select a show first.",
-      );
-      return;
-    }
-
-    /*
-     * EvaluationRequest requires evaluatorId.
-     */
-    const currentUser =
-      getCurrentUser();
-
-    const evaluatorId =
-      currentUser?.userId ??
-      currentUser?.id;
-
-    if (!evaluatorId) {
-      setErrorMessage(
-        "Unable to identify the evaluator. Please login again.",
-      );
-      return;
-    }
-
-    /*
-     * Validate all four scores.
-     */
-    const scoreValues = [
-      scores.originality,
-      scores.creativity,
-      scores.marketPotential,
-      scores.feasibility,
+    const directValues = [
+      object.role,
+      object.authority,
+      object.name,
+      object.roleName,
     ];
 
-    const invalidScore =
-      scoreValues.some(
-        (score) =>
-          !Number.isFinite(score) ||
-          score < 0 ||
-          score > 10,
+    for (
+      const candidate of directValues
+    ) {
+      const role =
+        normalizeRole(
+          candidate
+        );
+
+      if (role) {
+        return role;
+      }
+    }
+
+    const nestedValues = [
+      object.roles,
+      object.authorities,
+      object.user,
+      object.data,
+    ];
+
+    for (
+      const nested of nestedValues
+    ) {
+      const role =
+        extractRole(nested);
+
+      if (role) {
+        return role;
+      }
+    }
+  }
+
+  return "";
+}
+
+/* =========================================================
+   LOGGED-IN ROLE
+========================================================= */
+
+function getLoggedInRole(): string {
+  try {
+    const storedUser =
+      localStorage.getItem(
+        "streamforge_user"
       );
 
-    if (invalidScore) {
-      setErrorMessage(
-        "All scores must be between 0 and 10.",
+    if (storedUser) {
+      try {
+        const user =
+          JSON.parse(
+            storedUser
+          );
+
+        const role =
+          extractRole(user);
+
+        if (role) {
+          return role;
+        }
+      } catch {
+        // Continue to JWT
+      }
+    }
+
+    const token =
+      localStorage.getItem(
+        "streamforge_token"
       );
-      return;
+
+    if (!token) {
+      return "";
+    }
+
+    const parts =
+      token.split(".");
+
+    if (parts.length !== 3) {
+      return "";
     }
 
     try {
-      setSaving(true);
-      setErrorMessage("");
-      setSuccessMessage("");
+      const payload =
+        JSON.parse(
+          atob(
+            parts[1]
+              .replace(/-/g, "+")
+              .replace(/_/g, "/")
+          )
+        );
 
-      /*
-       * IMPORTANT BACKEND ENUM MAPPING
-       *
-       * Approve:
-       * APPROVED
-       *
-       * Reject:
-       * REJECTED
-       *
-       * Request changes:
-       * REVISION_REQUIRED
-       *
-       * Your backend DOES NOT accept:
-       * REQUEST_CHANGES
-       * PENDING
-       */
-      const payload = {
-        showId:
-          selectedShow.showId,
+      return extractRole(
+        payload
+      );
+    } catch {
+      return "";
+    }
+  } catch {
+    return "";
+  }
+}
 
-        evaluatorId,
+/* =========================================================
+   DECISION STYLE
+========================================================= */
 
-        originalityScore:
-          scores.originality,
+function getDecisionClass(
+  decision: string
+) {
+  switch (
+    decision?.toUpperCase()
+  ) {
+    case "APPROVED":
+      return "bg-success/15 text-success border-success/30";
 
-        creativityScore:
-          scores.creativity,
+    case "REJECTED":
+      return "bg-destructive/15 text-destructive border-destructive/30";
 
-        marketPotentialScore:
-          scores.marketPotential,
+    case "REVISION_REQUIRED":
+      return "bg-warning/15 text-warning border-warning/30";
 
-        feasibilityScore:
-          scores.feasibility,
+    default:
+      return "bg-muted text-muted-foreground border-border";
+  }
+}
 
-        overallScore: Number(
-          weightedScore.toFixed(2),
-        ),
+/* =========================================================
+   SCORE STYLE
+========================================================= */
 
-        decision,
+function getScoreClass(
+  score: number
+) {
+  if (score >= 8) {
+    return "text-success";
+  }
 
-        remarks:
-          remarks.trim() || null,
-      };
+  if (score >= 5) {
+    return "text-warning";
+  }
 
-      console.log(
-        "Evaluation payload:",
-        payload,
+  return "text-destructive";
+}
+
+/* =========================================================
+   MAIN PAGE
+========================================================= */
+
+function EvaluationPage() {
+  /* =======================================================
+     BASIC STATE
+  ======================================================= */
+
+  const [
+    showId,
+    setShowId,
+  ] = useState("");
+
+  const [
+    evaluations,
+    setEvaluations,
+  ] = useState<Evaluation[]>([]);
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+  const [
+    saving,
+    setSaving,
+  ] = useState(false);
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+  const [
+    success,
+    setSuccess,
+  ] = useState("");
+
+  /* =======================================================
+     MODALS
+  ======================================================= */
+
+  const [
+    showForm,
+    setShowForm,
+  ] = useState(false);
+
+  const [
+    editingEvaluation,
+    setEditingEvaluation,
+  ] = useState<Evaluation | null>(
+    null
+  );
+
+  const [
+    viewingEvaluation,
+    setViewingEvaluation,
+  ] = useState<Evaluation | null>(
+    null
+  );
+
+  /* =======================================================
+     DELETE STATE
+  ======================================================= */
+
+  const [
+    deletingId,
+    setDeletingId,
+  ] = useState<number | null>(
+    null
+  );
+
+  /* =======================================================
+     USER
+  ======================================================= */
+
+  const [
+    evaluatorId,
+    setEvaluatorId,
+  ] = useState<number | null>(
+    null
+  );
+
+  const [
+    username,
+    setUsername,
+  ] = useState(
+    "Unknown user"
+  );
+
+  const [
+    role,
+    setRole,
+  ] = useState("");
+
+  /* =======================================================
+     COMMENT STATE
+  ======================================================= */
+
+  const [
+    comments,
+    setComments,
+  ] = useState<
+    EvaluationComment[]
+  >([]);
+
+  const [
+    commentsLoading,
+    setCommentsLoading,
+  ] = useState(false);
+
+  const [
+    commentSaving,
+    setCommentSaving,
+  ] = useState(false);
+
+  const [
+    commentDeletingId,
+    setCommentDeletingId,
+  ] = useState<number | null>(
+    null
+  );
+
+  const [
+    commentText,
+    setCommentText,
+  ] = useState("");
+
+  /* =======================================================
+     FORM STATE
+  ======================================================= */
+
+  const [
+    form,
+    setForm,
+  ] = useState<EvaluationRequest>({
+    showId: 0,
+    evaluatorId: 0,
+    originalityScore: 0,
+    creativityScore: 0,
+    marketPotentialScore: 0,
+    feasibilityScore: 0,
+    overallScore: 0,
+    decision: "",
+    remarks: "",
+  });
+
+  /* =======================================================
+     PERMISSIONS
+  ======================================================= */
+
+  const canManageEvaluations =
+    role === "ADMIN" ||
+    role === "CONTENT_MANAGER";
+
+  const canDeleteEvaluations =
+    role === "ADMIN";
+
+  const canManageComments =
+    role === "ADMIN" ||
+    role === "CONTENT_MANAGER";
+
+  const canDeleteComments =
+    role === "ADMIN";
+
+  /* =======================================================
+     INITIAL USER LOAD
+  ======================================================= */
+
+  useEffect(() => {
+    const id =
+      getLoggedInUserId();
+
+    const name =
+      getLoggedInUsername();
+
+    const currentRole =
+      getLoggedInRole();
+
+    setEvaluatorId(id);
+    setUsername(name);
+    setRole(currentRole);
+
+    if (!id) {
+      setError(
+        "Unable to determine the logged-in user's ID."
+      );
+    }
+  }, []);
+
+  /* =======================================================
+     LOAD EVALUATIONS
+  ======================================================= */
+
+  const loadEvaluations = async (
+    requestedShowId?: string
+  ) => {
+    setError("");
+
+    const id =
+      requestedShowId ??
+      showId;
+
+    const numericShowId =
+      Number(id);
+
+    if (
+      !id ||
+      !Number.isInteger(
+        numericShowId
+      ) ||
+      numericShowId <= 0
+    ) {
+      setError(
+        "Please enter a valid Show ID."
       );
 
-      /* =================================================
-         UPDATE
-      ================================================= */
+      return;
+    }
 
-      if (existingEvaluation) {
-        const updated =
-          await apiRequest<EvaluationResponse>(
-            `/api/evaluations/${existingEvaluation.evaluationId}`,
-            {
-              method: "PUT",
-              body: JSON.stringify(
-                payload,
-              ),
-            },
-          );
+    setLoading(true);
 
-        setExistingEvaluation(
-          updated,
+    try {
+      const data =
+        await apiRequest<
+          Evaluation[]
+        >(
+          `/api/evaluations/show/${numericShowId}`
         );
 
-        setSelectedDecision(
-          updated.decision,
-        );
-
-        setScores({
-          originality: Number(
-            updated.originalityScore ?? 0,
-          ),
-
-          creativity: Number(
-            updated.creativityScore ?? 0,
-          ),
-
-          marketPotential: Number(
-            updated.marketPotentialScore ?? 0,
-          ),
-
-          feasibility: Number(
-            updated.feasibilityScore ?? 0,
-          ),
-        });
-
-        setRemarks(
-          updated.remarks ?? "",
-        );
-
-        setSuccessMessage(
-          "Evaluation updated successfully.",
-        );
-      }
-
-      /* =================================================
-         CREATE
-      ================================================= */
-
-      else {
-        const created =
-          await apiRequest<EvaluationResponse>(
-            "/api/evaluations",
-            {
-              method: "POST",
-              body: JSON.stringify(
-                payload,
-              ),
-            },
-          );
-
-        setExistingEvaluation(
-          created,
-        );
-
-        setSelectedDecision(
-          created.decision,
-        );
-
-        setScores({
-          originality: Number(
-            created.originalityScore ?? 0,
-          ),
-
-          creativity: Number(
-            created.creativityScore ?? 0,
-          ),
-
-          marketPotential: Number(
-            created.marketPotentialScore ?? 0,
-          ),
-
-          feasibility: Number(
-            created.feasibilityScore ?? 0,
-          ),
-        });
-
-        setRemarks(
-          created.remarks ?? "",
-        );
-
-        setSuccessMessage(
-          "Evaluation submitted successfully.",
-        );
-      }
-    } catch (error) {
-      console.error(
-        "Evaluation request failed:",
-        error,
+      setEvaluations(
+        Array.isArray(data)
+          ? data
+          : []
       );
 
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to save evaluation.",
+      setShowId(
+        String(numericShowId)
+      );
+    } catch (err) {
+      setEvaluations([]);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load evaluations."
       );
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
-  }
+  };
+
+  /* =======================================================
+     LOAD COMMENTS
+  ======================================================= */
+
+  const loadComments = async (
+    evaluationId: number
+  ) => {
+    setCommentsLoading(true);
+    setComments([]);
+    setError("");
+
+    try {
+      const data =
+        await apiRequest<
+          EvaluationComment[]
+        >(
+          `/api/evaluation-comments/evaluation/${evaluationId}`
+        );
+
+      setComments(
+        Array.isArray(data)
+          ? data
+          : []
+      );
+    } catch (err) {
+      setComments([]);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load evaluation comments."
+      );
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  /* =======================================================
+     OPEN VIEW
+  ======================================================= */
+
+  const openView = async (
+    evaluation: Evaluation
+  ) => {
+    setViewingEvaluation(
+      evaluation
+    );
+
+    setCommentText("");
+
+    setSuccess("");
+
+    await loadComments(
+      evaluation.evaluationId
+    );
+  };
+
+  /* =======================================================
+     ADD COMMENT
+  ======================================================= */
+
+  const addComment = async () => {
+    setError("");
+    setSuccess("");
+
+    if (!viewingEvaluation) {
+      return;
+    }
+
+    if (!canManageComments) {
+      setError(
+        "You are not authorized to add comments."
+      );
+
+      return;
+    }
+
+    if (!evaluatorId) {
+      setError(
+        "Unable to determine the logged-in user's ID."
+      );
+
+      return;
+    }
+
+    const trimmedComment =
+      commentText.trim();
+
+    if (!trimmedComment) {
+      setError(
+        "Please enter a comment."
+      );
+
+      return;
+    }
+
+    if (
+      trimmedComment.length >
+      2000
+    ) {
+      setError(
+        "Comment cannot exceed 2000 characters."
+      );
+
+      return;
+    }
+
+    setCommentSaving(true);
+
+    const request:
+      EvaluationCommentRequest = {
+      evaluationId:
+        viewingEvaluation.evaluationId,
+
+      userId:
+        evaluatorId,
+
+      comment:
+        trimmedComment,
+    };
+
+    try {
+      const created =
+        await apiRequest<
+          EvaluationComment
+        >(
+          "/api/evaluation-comments",
+          {
+            method: "POST",
+            body: JSON.stringify(
+              request
+            ),
+          }
+        );
+
+      setComments(
+        (previous) => [
+          ...previous,
+          created,
+        ]
+      );
+
+      setCommentText("");
+
+      setSuccess(
+        "Comment added successfully!"
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to add comment."
+      );
+    } finally {
+      setCommentSaving(false);
+    }
+  };
+
+  /* =======================================================
+     DELETE COMMENT
+     FIXED:
+     Uses deleteRequest() because backend returns String.
+  ======================================================= */
+
+  const deleteComment = async (
+    commentId: number
+  ) => {
+    setError("");
+    setSuccess("");
+
+    if (!canDeleteComments) {
+      setError(
+        "Only administrators can delete comments."
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "Are you sure you want to delete this comment?"
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setCommentDeletingId(
+      commentId
+    );
+
+    try {
+      await deleteRequest(
+        `/api/evaluation-comments/${commentId}`
+      );
+
+      setComments(
+        (previous) =>
+          previous.filter(
+            (comment) =>
+              comment.commentId !==
+              commentId
+          )
+      );
+
+      setSuccess(
+        "Comment deleted successfully!"
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to delete comment."
+      );
+    } finally {
+      setCommentDeletingId(null);
+    }
+  };
+
+  /* =======================================================
+     CREATE EVALUATION
+  ======================================================= */
+
+  const openCreate = () => {
+    setError("");
+    setSuccess("");
+
+    const numericShowId =
+      Number(showId);
+
+    if (
+      !Number.isInteger(
+        numericShowId
+      ) ||
+      numericShowId <= 0
+    ) {
+      setError(
+        "Enter a valid Show ID before creating an evaluation."
+      );
+
+      return;
+    }
+
+    if (!evaluatorId) {
+      setError(
+        "Unable to determine the logged-in user's ID."
+      );
+
+      return;
+    }
+
+    if (!canManageEvaluations) {
+      setError(
+        "You are not authorized to create evaluations."
+      );
+
+      return;
+    }
+
+    setEditingEvaluation(
+      null
+    );
+
+    setForm({
+      showId:
+        numericShowId,
+
+      evaluatorId:
+        evaluatorId,
+
+      originalityScore: 0,
+
+      creativityScore: 0,
+
+      marketPotentialScore: 0,
+
+      feasibilityScore: 0,
+
+      overallScore: 0,
+
+      decision: "",
+
+      remarks: "",
+    });
+
+    setShowForm(true);
+  };
+
+  /* =======================================================
+     EDIT EVALUATION
+  ======================================================= */
+
+  const openEdit = (
+    evaluation: Evaluation
+  ) => {
+    setError("");
+    setSuccess("");
+
+    if (!canManageEvaluations) {
+      setError(
+        "You are not authorized to edit evaluations."
+      );
+
+      return;
+    }
+
+    setEditingEvaluation(
+      evaluation
+    );
+
+    setForm({
+      showId:
+        Number(showId),
+
+      evaluatorId:
+        evaluatorId ?? 0,
+
+      originalityScore:
+        evaluation.originalityScore ??
+        0,
+
+      creativityScore:
+        evaluation.creativityScore ??
+        0,
+
+      marketPotentialScore:
+        evaluation.marketPotentialScore ??
+        0,
+
+      feasibilityScore:
+        evaluation.feasibilityScore ??
+        0,
+
+      overallScore:
+        Number(
+          evaluation.overallScore ??
+            0
+        ),
+
+      decision:
+        evaluation.decision ??
+        "",
+
+      remarks:
+        evaluation.remarks ??
+        "",
+    });
+
+    setShowForm(true);
+  };
+
+  /* =======================================================
+     INTEGER SCORE UPDATE
+  ======================================================= */
+
+  const updateIntegerScore = (
+    field:
+      | "originalityScore"
+      | "creativityScore"
+      | "marketPotentialScore"
+      | "feasibilityScore",
+    value: string
+  ) => {
+    if (value === "") {
+      setForm(
+        (previous) => ({
+          ...previous,
+          [field]: 0,
+        })
+      );
+
+      return;
+    }
+
+    let number =
+      Number(value);
+
+    if (
+      Number.isNaN(number)
+    ) {
+      number = 0;
+    }
+
+    number =
+      Math.round(number);
+
+    if (number < 0) {
+      number = 0;
+    }
+
+    if (number > 10) {
+      number = 10;
+    }
+
+    setForm(
+      (previous) => ({
+        ...previous,
+        [field]: number,
+      })
+    );
+  };
+
+  /* =======================================================
+     OVERALL SCORE UPDATE
+  ======================================================= */
+
+  const updateOverallScore = (
+    value: string
+  ) => {
+    if (value === "") {
+      setForm(
+        (previous) => ({
+          ...previous,
+          overallScore: 0,
+        })
+      );
+
+      return;
+    }
+
+    let number =
+      Number(value);
+
+    if (
+      Number.isNaN(number)
+    ) {
+      number = 0;
+    }
+
+    if (number < 0) {
+      number = 0;
+    }
+
+    if (number > 10) {
+      number = 10;
+    }
+
+    setForm(
+      (previous) => ({
+        ...previous,
+        overallScore: number,
+      })
+    );
+  };
 
   /* =======================================================
      SAVE EVALUATION
   ======================================================= */
 
-  async function handleSaveEvaluation() {
-    if (!selectedDecision) {
-      setErrorMessage(
-        "Please choose Approve, Reject, or Request changes before saving.",
+  const saveEvaluation =
+    async () => {
+      setError("");
+      setSuccess("");
+
+      if (!canManageEvaluations) {
+        setError(
+          "You are not authorized to manage evaluations."
+        );
+
+        return;
+      }
+
+      if (
+        !form.showId ||
+        form.showId <= 0
+      ) {
+        setError(
+          "Show ID is required."
+        );
+
+        return;
+      }
+
+      if (
+        !form.evaluatorId ||
+        form.evaluatorId <= 0
+      ) {
+        setError(
+          "Evaluator ID is required."
+        );
+
+        return;
+      }
+
+      if (!form.decision) {
+        setError(
+          "Please select an evaluation decision."
+        );
+
+        return;
+      }
+
+      const integerScores = [
+        form.originalityScore,
+        form.creativityScore,
+        form.marketPotentialScore,
+        form.feasibilityScore,
+      ];
+
+      const invalidIntegerScore =
+        integerScores.some(
+          (score) =>
+            !Number.isInteger(
+              score
+            ) ||
+            score < 0 ||
+            score > 10
+        );
+
+      if (
+        invalidIntegerScore
+      ) {
+        setError(
+          "Originality, Creativity, Market Potential and Feasibility scores must be whole numbers from 0 to 10."
+        );
+
+        return;
+      }
+
+      if (
+        form.overallScore < 0 ||
+        form.overallScore > 10
+      ) {
+        setError(
+          "Overall score must be between 0 and 10."
+        );
+
+        return;
+      }
+
+      setSaving(true);
+
+      try {
+        if (editingEvaluation) {
+          await apiRequest<Evaluation>(
+            `/api/evaluations/${editingEvaluation.evaluationId}`,
+            {
+              method: "PUT",
+              body: JSON.stringify(
+                form
+              ),
+            }
+          );
+
+          setSuccess(
+            "Evaluation updated successfully!"
+          );
+        } else {
+          await apiRequest<Evaluation>(
+            "/api/evaluations",
+            {
+              method: "POST",
+              body: JSON.stringify(
+                form
+              ),
+            }
+          );
+
+          setSuccess(
+            "Evaluation created successfully!"
+          );
+        }
+
+        const savedShowId =
+          form.showId;
+
+        setShowForm(false);
+
+        setEditingEvaluation(
+          null
+        );
+
+        await loadEvaluations(
+          String(savedShowId)
+        );
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to save evaluation."
+        );
+      } finally {
+        setSaving(false);
+      }
+    };
+
+  /* =======================================================
+     DELETE EVALUATION
+     FIXED:
+     Uses deleteRequest() because backend returns String.
+  ======================================================= */
+
+  const deleteEvaluation =
+    async (
+      evaluationId: number
+    ) => {
+      setError("");
+      setSuccess("");
+
+      if (!canDeleteEvaluations) {
+        setError(
+          "Only administrators can delete evaluations."
+        );
+
+        return;
+      }
+
+      const confirmed =
+        window.confirm(
+          "Are you sure you want to delete this evaluation?"
+        );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setDeletingId(
+        evaluationId
       );
+
+      try {
+        await deleteRequest(
+          `/api/evaluations/${evaluationId}`
+        );
+
+        /*
+         * Immediately remove from UI.
+         */
+        setEvaluations(
+          (previous) =>
+            previous.filter(
+              (evaluation) =>
+                evaluation.evaluationId !==
+                evaluationId
+            )
+        );
+
+        /*
+         * If currently viewing the deleted
+         * evaluation, close the modal.
+         */
+        if (
+          viewingEvaluation?.evaluationId ===
+          evaluationId
+        ) {
+          setViewingEvaluation(
+            null
+          );
+
+          setComments([]);
+
+          setCommentText("");
+        }
+
+        setSuccess(
+          "Evaluation deleted successfully!"
+        );
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to delete evaluation."
+        );
+      } finally {
+        setDeletingId(null);
+      }
+    };
+
+  /* =======================================================
+     CLOSE FORM
+  ======================================================= */
+
+  const closeForm = () => {
+    if (saving) {
       return;
     }
 
-    await submitEvaluation(
-      selectedDecision,
+    setShowForm(false);
+
+    setEditingEvaluation(
+      null
     );
-  }
+  };
 
   /* =======================================================
-     DISCUSS BUTTON
+     CLOSE VIEW
   ======================================================= */
 
-  function handleDiscuss() {
-    setDiscussionOpen(
-      (previous) => {
-        const next = !previous;
-
-        /*
-         * When opening discussion,
-         * focus the remarks field.
-         */
-        if (next) {
-          setTimeout(() => {
-            remarksRef.current?.focus();
-          }, 50);
-        }
-
-        return next;
-      },
+  const closeView = () => {
+    setViewingEvaluation(
+      null
     );
 
-    setErrorMessage("");
-    setSuccessMessage("");
-  }
+    setComments([]);
+
+    setCommentText("");
+
+    setCommentsLoading(false);
+  };
 
   /* =======================================================
-     LOADING SHOWS
+     AVERAGE SCORE
   ======================================================= */
 
-  if (loadingShows) {
-    return (
-      <DashboardLayout>
-        <PageHeader
-          title="Content Evaluation"
-          description="Score submissions and route them to production."
-        />
-
-        <div className="min-h-[400px] flex items-center justify-center">
-          <div className="flex items-center gap-3 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Loading shows...
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  /* =======================================================
-     NO SHOWS
-  ======================================================= */
-
-  if (
-    !selectedShow ||
-    shows.length === 0
-  ) {
-    return (
-      <DashboardLayout>
-        <PageHeader
-          title="Content Evaluation"
-          description="Score submissions and route them to production."
-        />
-
-        {errorMessage && (
-          <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            {errorMessage}
-          </div>
-        )}
-
-        <Card>
-          <div className="py-20 text-center">
-            <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-muted grid place-items-center">
-              <AlertCircle className="h-7 w-7 text-muted-foreground" />
-            </div>
-
-            <h2 className="text-lg font-semibold">
-              No shows available
-            </h2>
-
-            <p className="mt-1 text-sm text-muted-foreground">
-              Create or submit a show before
-              starting an evaluation.
-            </p>
-          </div>
-        </Card>
-      </DashboardLayout>
-    );
-  }
+  const averageScore =
+    evaluations.length > 0
+      ? (
+          evaluations.reduce(
+            (
+              total,
+              evaluation
+            ) =>
+              total +
+              Number(
+                evaluation.overallScore ??
+                  0
+              ),
+            0
+          ) /
+          evaluations.length
+        ).toFixed(1)
+      : "—";
 
   /* =======================================================
-     MAIN
+     UI
   ======================================================= */
 
   return (
     <DashboardLayout>
+
       <PageHeader
-        title="Content Evaluation"
-        description="Score submissions and route them to production."
+        title="Evaluation"
+        description="Evaluate submitted shows and manage evaluation decisions."
       />
 
-      {/* =================================================
-          SUCCESS
-      ================================================= */}
-
-      {successMessage && (
-        <div className="mb-4 rounded-xl border border-success/40 bg-success/10 px-4 py-3 text-sm text-success flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-
-          <span>
-            {successMessage}
-          </span>
-        </div>
-      )}
-
-      {/* =================================================
+      {/* ===================================================
           ERROR
-      ================================================= */}
+      =================================================== */}
 
-      {errorMessage && (
-        <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive flex items-center gap-2">
+      {error && (
+        <div className="mb-5 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 flex items-center gap-3 text-sm text-destructive">
+
           <AlertCircle className="h-4 w-4 shrink-0" />
 
-          <span>
-            {errorMessage}
+          <span className="flex-1">
+            {error}
           </span>
+
+          <button
+            onClick={() =>
+              setError("")
+            }
+            className="opacity-70 hover:opacity-100"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
         </div>
       )}
 
-      <div className="grid lg:grid-cols-[340px_minmax(0,1fr)] gap-6">
-        {/* =================================================
-            QUEUE
-        ================================================= */}
+      {/* ===================================================
+          SUCCESS
+      =================================================== */}
 
-        <Card className="!p-0 h-fit overflow-hidden">
-          <div className="p-4 border-b border-border">
-            <div className="text-sm font-semibold">
-              Evaluation Queue
+      {success && (
+        <div className="mb-5 rounded-xl border border-success/40 bg-success/10 px-4 py-3 flex items-center gap-3 text-sm text-success">
+
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+
+          <span className="flex-1">
+            {success}
+          </span>
+
+          <button
+            onClick={() =>
+              setSuccess("")
+            }
+            className="opacity-70 hover:opacity-100"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+        </div>
+      )}
+
+      {/* ===================================================
+          LOGGED-IN USER
+      =================================================== */}
+
+      <Card className="mb-6">
+
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+
+          <div>
+
+            <div className="text-xs uppercase tracking-wider text-muted-foreground">
+              Logged-in evaluator
+            </div>
+
+            <div className="mt-1 text-lg font-semibold">
+              @{username}
             </div>
 
             <div className="text-xs text-muted-foreground mt-1">
-              {shows.length} shows
+              User ID:{" "}
+              {evaluatorId ??
+                "Unavailable"}
             </div>
+
           </div>
 
-          <ul className="max-h-[70vh] overflow-y-auto scrollbar-thin">
-            {shows.map((show) => {
-              const isSelected =
-                selectedShow.showId ===
-                show.showId;
+          <div className="flex items-center gap-3">
 
-              return (
-                <li
-                  key={show.showId}
-                >
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() =>
-                      handleSelectShow(
-                        show,
-                      )
-                    }
-                    className={`w-full text-left p-4 border-b border-border transition flex items-center gap-3 ${
-                      isSelected
-                        ? "bg-primary/5 border-l-2 border-l-primary"
-                        : "hover:bg-accent/40"
-                    } ${
-                      saving
-                        ? "cursor-not-allowed opacity-60"
-                        : ""
-                    }`}
-                  >
-                    {/* INITIAL */}
-                    <div className="h-11 w-11 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0 font-semibold">
-                      {show.title
-                        ?.charAt(0)
-                        ?.toUpperCase() ||
-                        "S"}
-                    </div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wider">
+              {role ||
+                "Unknown role"}
+            </div>
 
-                    {/* DETAILS */}
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold truncate">
-                        {show.title}
-                      </div>
+            <div className="h-11 w-11 rounded-xl bg-primary/10 text-primary grid place-items-center">
+              <Star className="h-5 w-5" />
+            </div>
 
-                      <div className="text-xs text-muted-foreground truncate mt-0.5">
-                        {getCreatorName(
-                          show.creator,
-                        )}
-                      </div>
-                    </div>
+          </div>
 
-                    {/* STATUS */}
-                    <Chip
-                      variant={getStatusVariant(
-                        show.status,
-                      )}
-                    >
-                      {formatStatus(
-                        show.status,
-                      )}
-                    </Chip>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </Card>
+        </div>
 
-        {/* =================================================
-            RIGHT SIDE
-        ================================================= */}
+      </Card>
 
-        <div className="space-y-4 min-w-0">
-          {/* ===============================================
-              SHOW INFORMATION
-          =============================================== */}
+      {/* ===================================================
+          SHOW SEARCH
+      =================================================== */}
 
-          <Card className="!p-0 overflow-hidden">
-            <div className="relative h-52 overflow-hidden">
-              {/* BACKGROUND */}
-              <div
-                className="absolute inset-0"
-                style={{
-                  background:
-                    "radial-gradient(circle at 80% 20%, oklch(0.30 0.12 25 / 0.35), transparent 55%), linear-gradient(135deg, oklch(0.12 0 0), oklch(0.09 0 0))",
+      <Card className="mb-6">
+
+        <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+
+          <div className="flex-1">
+
+            <label className="block">
+
+              <div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Show ID
+              </div>
+
+              <input
+                type="number"
+                min="1"
+                value={showId}
+                onChange={(event) =>
+                  setShowId(
+                    event.target.value
+                  )
+                }
+                onKeyDown={(event) => {
+                  if (
+                    event.key ===
+                    "Enter"
+                  ) {
+                    loadEvaluations();
+                  }
                 }}
+                placeholder="Enter Show ID"
+                className="w-full h-11 px-3.5 rounded-xl bg-surface border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
 
-              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
+            </label>
 
-              {/* TITLE */}
-              <div className="absolute bottom-5 left-6 right-6">
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <Chip
-                    variant={getStatusVariant(
-                      selectedShow.status,
-                    )}
-                  >
-                    {formatStatus(
-                      selectedShow.status,
-                    )}
-                  </Chip>
+          </div>
 
-                  {selectedShow.language && (
-                    <Chip variant="info">
-                      {selectedShow.language}
-                    </Chip>
-                  )}
+          <button
+            onClick={() =>
+              loadEvaluations()
+            }
+            disabled={
+              loading ||
+              !showId
+            }
+            className="h-11 px-5 rounded-xl border border-border hover:bg-accent text-sm font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-50"
+          >
 
-                  {selectedShow.targetAudience && (
-                    <Chip>
-                      {
-                        selectedShow.targetAudience
-                      }
-                    </Chip>
-                  )}
-                </div>
+            <RefreshCw
+              className={cn(
+                "h-4 w-4",
+                loading &&
+                  "animate-spin"
+              )}
+            />
 
-                <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
-                  {selectedShow.title}
-                </h2>
+            {loading
+              ? "Loading..."
+              : "Load Evaluations"}
 
-                <div className="text-sm text-muted-foreground mt-1">
-                  by{" "}
-                  {getCreatorName(
-                    selectedShow.creator,
-                  )}{" "}
-                  ·{" "}
-                  {getBudget(
-                    selectedShow.estimatedBudget,
-                  )}
-                </div>
-              </div>
-            </div>
+          </button>
 
-            {/* SHOW FACTS */}
-            <div className="p-6">
-              <div className="grid md:grid-cols-3 gap-3">
-                {/* CREATOR */}
-                <div className="rounded-xl border border-border p-4">
-                  <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-                    <User className="h-3.5 w-3.5" />
-                    Creator
-                  </div>
+          {canManageEvaluations && (
+            <button
+              onClick={openCreate}
+              disabled={
+                !showId ||
+                !evaluatorId
+              }
+              className="h-11 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 shadow-[var(--shadow-glow)]"
+            >
 
-                  <div className="mt-1.5 text-sm font-semibold truncate">
-                    {getCreatorName(
-                      selectedShow.creator,
-                    )}
-                  </div>
-                </div>
+              <Plus className="h-4 w-4" />
 
-                {/* LANGUAGE */}
-                <div className="rounded-xl border border-border p-4">
-                  <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-                    <Languages className="h-3.5 w-3.5" />
-                    Language
-                  </div>
+              Add Evaluation
 
-                  <div className="mt-1.5 text-sm font-semibold">
-                    {selectedShow.language ||
-                      "Not specified"}
-                  </div>
-                </div>
-
-                {/* RELEASE */}
-                <div className="rounded-xl border border-border p-4">
-                  <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    Release
-                  </div>
-
-                  <div className="mt-1.5 text-sm font-semibold">
-                    {formatReleaseDate(
-                      selectedShow.expectedReleaseDate,
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* SYNOPSIS */}
-              <div className="mt-5">
-                <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
-                  Synopsis
-                </div>
-
-                <p className="text-sm text-muted-foreground leading-6">
-                  {selectedShow.synopsis ||
-                    selectedShow.description ||
-                    "No synopsis available for this show."}
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          {/* ===============================================
-              EXISTING EVALUATION
-          =============================================== */}
-
-          {existingEvaluation && (
-            <div className="rounded-xl border border-info/40 bg-info/5 px-4 py-3 text-sm flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-info shrink-0" />
-
-              <span>
-                Existing evaluation ·{" "}
-                <strong>
-                  {formatDecision(
-                    existingEvaluation.decision,
-                  )}
-                </strong>
-              </span>
-            </div>
+            </button>
           )}
 
-          {/* ===============================================
-              SCORECARD
-          =============================================== */}
+        </div>
 
-          <Card>
-            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-7">
-              <div>
-                <div className="text-sm font-semibold">
-                  Evaluation scorecard
-                </div>
+      </Card>
 
-                <div className="text-xs text-muted-foreground mt-1">
-                  Rate each criterion from 0
-                  to 10
-                </div>
-              </div>
+      {/* ===================================================
+          SUMMARY
+      =================================================== */}
 
-              <div className="text-left md:text-right">
-                <div className="text-3xl font-bold gradient-text">
-                  {weightedScore.toFixed(
-                    2,
-                  )}{" "}
-                  / 10
-                </div>
+      <div className="grid md:grid-cols-3 gap-4 mb-6">
 
-                <div className="text-xs text-muted-foreground">
-                  Weighted overall score
-                </div>
-              </div>
+        <Metric
+          label="Show ID"
+          value={
+            showId || "—"
+          }
+        />
+
+        <Metric
+          label="Total Evaluations"
+          value={String(
+            evaluations.length
+          )}
+        />
+
+        <Metric
+          label="Average Overall Score"
+          value={
+            averageScore ===
+            "—"
+              ? "—"
+              : `${averageScore}/10`
+          }
+        />
+
+      </div>
+
+      {/* ===================================================
+          EVALUATIONS
+      =================================================== */}
+
+      <Card className="!p-0 overflow-hidden">
+
+        <div className="p-5 border-b border-border flex items-center justify-between">
+
+          <div>
+
+            <div className="text-sm font-semibold">
+              Evaluations
             </div>
 
-            {/* CRITERIA */}
-            <div className="space-y-7">
-              {criteria.map(
-                (criterion) => {
-                  const value =
-                    scores[
-                      criterion.key
-                    ];
+            <div className="text-xs text-muted-foreground mt-1">
+              Evaluations for Show{" "}
+              {showId || "—"}
+            </div>
 
-                  return (
-                    <div
-                      key={
-                        criterion.key
-                      }
-                    >
-                      {/* LABEL */}
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="text-sm font-semibold">
-                            {
-                              criterion.label
-                            }
-                          </div>
+          </div>
 
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            {
-                              criterion.description
-                            }
-                          </div>
-                        </div>
+          <Chip variant="info">
 
-                        <div className="text-sm font-semibold shrink-0">
-                          {value}/10
-                        </div>
-                      </div>
+            {evaluations.length}{" "}
+            {evaluations.length ===
+            1
+              ? "evaluation"
+              : "evaluations"}
 
-                      {/* STARS */}
-                      <div className="mt-3 flex items-center gap-1 flex-wrap">
-                        {Array.from(
-                          {
-                            length: 10,
-                          },
-                        ).map(
-                          (
-                            _,
-                            index,
-                          ) => {
-                            const starValue =
-                              index + 1;
+          </Chip>
 
-                            const active =
-                              starValue <=
-                              value;
+        </div>
 
-                            return (
-                              <button
-                                key={
-                                  starValue
-                                }
-                                type="button"
-                                disabled={
-                                  saving ||
-                                  loadingEvaluation
-                                }
-                                onClick={() =>
-                                  updateScore(
-                                    criterion.key,
-                                    starValue,
-                                  )
-                                }
-                                aria-label={`Set ${criterion.label} to ${starValue} out of 10`}
-                                className="p-0.5 rounded-md transition hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                <Star
-                                  className={`h-5 w-5 ${
-                                    active
-                                      ? "fill-primary text-primary"
-                                      : "text-muted-foreground"
-                                  }`}
-                                />
-                              </button>
-                            );
-                          },
-                        )}
-                      </div>
+        {loading ? (
 
-                      {/* PROGRESS */}
-                      <div className="mt-2">
-                        <Progress
-                          value={
-                            (value /
-                              10) *
-                            100
-                          }
-                        />
-                      </div>
+          <div className="py-20 text-center">
 
-                      {/* SCALE */}
-                      <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                        <span>0</span>
-                        <span>5</span>
-                        <span>10</span>
-                      </div>
-                    </div>
-                  );
-                },
+            <RefreshCw className="h-7 w-7 mx-auto animate-spin text-primary" />
+
+            <p className="mt-3 text-sm text-muted-foreground">
+              Loading evaluations...
+            </p>
+
+          </div>
+
+        ) : evaluations.length ===
+          0 ? (
+
+          <div className="py-20 text-center">
+
+            <div className="mx-auto h-14 w-14 rounded-2xl bg-primary/10 text-primary grid place-items-center">
+
+              <Star className="h-7 w-7" />
+
+            </div>
+
+            <h3 className="mt-5 text-lg font-semibold">
+              No evaluations found
+            </h3>
+
+            <p className="mt-2 text-sm text-muted-foreground">
+              Enter a Show ID and
+              load its evaluations,
+              or create the first
+              evaluation.
+            </p>
+
+            {showId &&
+              canManageEvaluations && (
+                <button
+                  onClick={
+                    openCreate
+                  }
+                  disabled={
+                    !evaluatorId
+                  }
+                  className="mt-5 h-10 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-50"
+                >
+
+                  <Plus className="h-4 w-4" />
+
+                  Create Evaluation
+
+                </button>
               )}
-            </div>
 
-            {/* =============================================
-                REMARKS
-            ============================================= */}
+          </div>
 
-            <div className="mt-8">
-              <div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Reviewer remarks
-              </div>
+        ) : (
 
-              <textarea
-                ref={remarksRef}
-                rows={5}
-                value={remarks}
-                onChange={(event) => {
-                  setRemarks(
-                    event.target.value,
-                  );
+          <div className="divide-y divide-border">
 
-                  setSuccessMessage("");
-                  setErrorMessage("");
-                }}
-                maxLength={2000}
-                disabled={saving}
-                placeholder="Add your evaluation remarks..."
-                className="w-full rounded-xl bg-surface border border-border p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-              />
+            {evaluations.map(
+              (
+                evaluation
+              ) => (
 
-              <div className="text-right text-xs text-muted-foreground mt-1">
-                {remarks.length}/2000
-              </div>
-            </div>
+                <div
+                  key={
+                    evaluation.evaluationId
+                  }
+                  className="p-5 hover:bg-accent/30 transition"
+                >
 
-            {/* =============================================
-                DISCUSS PANEL
-            ============================================= */}
+                  <div className="flex flex-col xl:flex-row xl:items-center gap-5">
 
-            {discussionOpen && (
-              <div className="mt-5 rounded-xl border border-info/30 bg-info/5 p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <MessageSquare className="h-4 w-4 text-info" />
+                    <div className="xl:w-24 shrink-0">
 
-                  <div>
-                    <div className="text-sm font-semibold">
-                      Discussion
+                      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                        Evaluation
+                      </div>
+
+                      <div className="mt-1 font-bold">
+                        #
+                        {
+                          evaluation.evaluationId
+                        }
+                      </div>
+
                     </div>
 
-                    <div className="text-xs text-muted-foreground">
-                      Add discussion notes to the
-                      evaluation.
+                    <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-3">
+
+                      <Score
+                        label="Originality"
+                        value={
+                          evaluation.originalityScore
+                        }
+                      />
+
+                      <Score
+                        label="Creativity"
+                        value={
+                          evaluation.creativityScore
+                        }
+                      />
+
+                      <Score
+                        label="Market"
+                        value={
+                          evaluation.marketPotentialScore
+                        }
+                      />
+
+                      <Score
+                        label="Feasibility"
+                        value={
+                          evaluation.feasibilityScore
+                        }
+                      />
+
+                      <Score
+                        label="Overall"
+                        value={Number(
+                          evaluation.overallScore
+                        )}
+                        highlight
+                      />
+
                     </div>
+
+                    <div className="xl:w-40 shrink-0">
+
+                      <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+                        Decision
+                      </div>
+
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold",
+                          getDecisionClass(
+                            evaluation.decision
+                          )
+                        )}
+                      >
+                        {
+                          evaluation.decision ===
+                          "REVISION_REQUIRED"
+                            ? "REVISION REQUIRED"
+                            : evaluation.decision
+                        }
+                      </span>
+
+                    </div>
+
+                    <div className="flex items-center gap-2">
+
+                      <button
+                        title="View evaluation"
+                        onClick={() =>
+                          openView(
+                            evaluation
+                          )
+                        }
+                        className="h-9 w-9 rounded-lg border border-border grid place-items-center hover:bg-accent"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+
+                      {canManageEvaluations && (
+                        <button
+                          title="Edit evaluation"
+                          onClick={() =>
+                            openEdit(
+                              evaluation
+                            )
+                          }
+                          className="h-9 w-9 rounded-lg border border-border grid place-items-center hover:bg-accent"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
+
+                      {canDeleteEvaluations && (
+                        <button
+                          title="Delete evaluation"
+                          onClick={() =>
+                            deleteEvaluation(
+                              evaluation.evaluationId
+                            )
+                          }
+                          disabled={
+                            deletingId ===
+                            evaluation.evaluationId
+                          }
+                          className="h-9 w-9 rounded-lg border border-destructive/30 text-destructive grid place-items-center hover:bg-destructive/10 disabled:opacity-50"
+                        >
+
+                          {deletingId ===
+                          evaluation.evaluationId ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+
+                        </button>
+                      )}
+
+                    </div>
+
                   </div>
-                </div>
 
-                <p className="text-xs text-muted-foreground">
-                  Use the reviewer remarks field
-                  above for notes that should be
-                  submitted with the evaluation.
-                </p>
-              </div>
+                  {evaluation.remarks && (
+                    <div className="mt-4 rounded-xl bg-surface border border-border px-4 py-3">
+
+                      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                        Remarks
+                      </div>
+
+                      <p className="text-sm mt-1 text-muted-foreground">
+                        {
+                          evaluation.remarks
+                        }
+                      </p>
+
+                    </div>
+                  )}
+
+                </div>
+              )
             )}
 
-            {/* =============================================
-                ACTIONS
-            ============================================= */}
+          </div>
+        )}
 
-            <div className="mt-7 flex flex-wrap items-center gap-2">
-              {/* APPROVE */}
+      </Card>
+
+      {/* ===================================================
+          CREATE / EDIT MODAL
+      =================================================== */}
+
+      {showForm && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-background shadow-2xl">
+
+            <div className="sticky top-0 z-10 bg-background border-b border-border px-6 py-5 flex items-center justify-between">
+
+              <div>
+
+                <h2 className="text-lg font-bold">
+                  {editingEvaluation
+                    ? "Edit Evaluation"
+                    : "Create Evaluation"}
+                </h2>
+
+                <p className="text-xs text-muted-foreground mt-1">
+                  Show ID:{" "}
+                  {form.showId}
+                  {" • "}
+                  Evaluator ID:{" "}
+                  {form.evaluatorId}
+                </p>
+
+              </div>
+
               <button
-                type="button"
-                disabled={
-                  saving ||
-                  loadingEvaluation
-                }
-                onClick={() =>
-                  submitEvaluation(
-                    "APPROVED",
-                  )
-                }
-                className="h-10 px-5 rounded-xl bg-success text-success-foreground text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {saving &&
-                selectedDecision ===
-                  "APPROVED" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4" />
-                )}
-
-                {saving &&
-                selectedDecision ===
-                  "APPROVED"
-                  ? "Saving..."
-                  : "Approve"}
-              </button>
-
-              {/* REJECT */}
-              <button
-                type="button"
-                disabled={
-                  saving ||
-                  loadingEvaluation
-                }
-                onClick={() =>
-                  submitEvaluation(
-                    "REJECTED",
-                  )
-                }
-                className="h-10 px-5 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {saving &&
-                selectedDecision ===
-                  "REJECTED" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <XCircle className="h-4 w-4" />
-                )}
-
-                {saving &&
-                selectedDecision ===
-                  "REJECTED"
-                  ? "Saving..."
-                  : "Reject"}
-              </button>
-
-              {/* REQUEST CHANGES */}
-              <button
-                type="button"
-                disabled={
-                  saving ||
-                  loadingEvaluation
-                }
-                onClick={() =>
-                  submitEvaluation(
-                    "REVISION_REQUIRED",
-                  )
-                }
-                className={`h-10 px-5 rounded-xl border text-sm inline-flex items-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                  selectedDecision ===
-                  "REVISION_REQUIRED"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border hover:bg-accent"
-                }`}
-              >
-                {saving &&
-                selectedDecision ===
-                  "REVISION_REQUIRED" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RotateCcw className="h-4 w-4" />
-                )}
-
-                {saving &&
-                selectedDecision ===
-                  "REVISION_REQUIRED"
-                  ? "Saving..."
-                  : "Request changes"}
-              </button>
-
-              {/* SAVE */}
-              <button
-                type="button"
-                disabled={
-                  saving ||
-                  loadingEvaluation
-                }
                 onClick={
-                  handleSaveEvaluation
+                  closeForm
                 }
-                className="h-10 px-5 rounded-xl border border-border text-sm inline-flex items-center gap-2 hover:bg-accent transition disabled:opacity-50 disabled:cursor-not-allowed md:ml-auto"
+                disabled={saving}
+                className="h-9 w-9 rounded-lg hover:bg-accent grid place-items-center"
               >
+                <X className="h-5 w-5" />
+              </button>
+
+            </div>
+
+            <div className="p-6 space-y-6">
+
+              <div className="grid md:grid-cols-2 gap-4">
+
+                <Field
+                  label="Show ID"
+                  value={String(
+                    form.showId
+                  )}
+                />
+
+                <Field
+                  label="Evaluator ID"
+                  value={String(
+                    form.evaluatorId
+                  )}
+                />
+
+              </div>
+
+              <div>
+
+                <div className="text-sm font-semibold mb-4">
+                  Evaluation Scores
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+
+                  <ScoreInput
+                    label="Originality"
+                    value={
+                      form.originalityScore
+                    }
+                    onChange={(
+                      value
+                    ) =>
+                      updateIntegerScore(
+                        "originalityScore",
+                        value
+                      )
+                    }
+                  />
+
+                  <ScoreInput
+                    label="Creativity"
+                    value={
+                      form.creativityScore
+                    }
+                    onChange={(
+                      value
+                    ) =>
+                      updateIntegerScore(
+                        "creativityScore",
+                        value
+                      )
+                    }
+                  />
+
+                  <ScoreInput
+                    label="Market Potential"
+                    value={
+                      form.marketPotentialScore
+                    }
+                    onChange={(
+                      value
+                    ) =>
+                      updateIntegerScore(
+                        "marketPotentialScore",
+                        value
+                      )
+                    }
+                  />
+
+                  <ScoreInput
+                    label="Feasibility"
+                    value={
+                      form.feasibilityScore
+                    }
+                    onChange={(
+                      value
+                    ) =>
+                      updateIntegerScore(
+                        "feasibilityScore",
+                        value
+                      )
+                    }
+                  />
+
+                  <ScoreInput
+                    label="Overall Score"
+                    value={
+                      form.overallScore
+                    }
+                    onChange={
+                      updateOverallScore
+                    }
+                    highlight
+                    decimal
+                  />
+
+                </div>
+
+              </div>
+
+              <div>
+
+                <label className="block">
+
+                  <div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Decision *
+                  </div>
+
+                  <select
+                    value={
+                      form.decision
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setForm(
+                        (
+                          previous
+                        ) => ({
+                          ...previous,
+                          decision:
+                            event
+                              .target
+                              .value as EvaluationDecision,
+                        })
+                      )
+                    }
+                    className="w-full h-11 px-3.5 rounded-xl bg-surface border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+
+                    <option value="">
+                      Select decision
+                    </option>
+
+                    {DECISIONS.map(
+                      (
+                        decision
+                      ) => (
+                        <option
+                          key={
+                            decision.value
+                          }
+                          value={
+                            decision.value
+                          }
+                        >
+                          {
+                            decision.label
+                          }
+                        </option>
+                      )
+                    )}
+
+                  </select>
+
+                </label>
+
+              </div>
+
+              <div>
+
+                <label className="block">
+
+                  <div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Remarks
+                  </div>
+
+                  <textarea
+                    value={
+                      form.remarks
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setForm(
+                        (
+                          previous
+                        ) => ({
+                          ...previous,
+                          remarks:
+                            event
+                              .target
+                              .value,
+                        })
+                      )
+                    }
+                    maxLength={2000}
+                    rows={5}
+                    placeholder="Enter evaluation remarks..."
+                    className="w-full px-3.5 py-3 rounded-xl bg-surface border border-border text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+
+                  <div className="text-right text-xs text-muted-foreground mt-1">
+                    {
+                      form.remarks
+                        .length
+                    }
+                    /2000
+                  </div>
+
+                </label>
+
+              </div>
+
+            </div>
+
+            <div className="sticky bottom-0 bg-background border-t border-border px-6 py-4 flex justify-end gap-3">
+
+              <button
+                onClick={
+                  closeForm
+                }
+                disabled={saving}
+                className="h-10 px-5 rounded-xl border border-border hover:bg-accent text-sm font-semibold"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={
+                  saveEvaluation
+                }
+                disabled={
+                  saving ||
+                  !form.decision
+                }
+                className="h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
+              >
+
                 {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <RefreshCw className="h-4 w-4 animate-spin" />
                 ) : (
                   <Save className="h-4 w-4" />
                 )}
 
                 {saving
                   ? "Saving..."
-                  : "Save evaluation"}
+                  : editingEvaluation
+                    ? "Update Evaluation"
+                    : "Create Evaluation"}
+
               </button>
 
-              {/* DISCUSS */}
-              <button
-                type="button"
-                onClick={
-                  handleDiscuss
-                }
-                className={`h-10 px-5 rounded-xl border text-sm inline-flex items-center gap-2 transition ${
-                  discussionOpen
-                    ? "border-info bg-info/10 text-info"
-                    : "border-border hover:bg-accent"
-                }`}
-              >
-                <MessageSquare className="h-4 w-4" />
-
-                {discussionOpen
-                  ? "Close discussion"
-                  : "Discuss"}
-              </button>
             </div>
-          </Card>
+
+          </div>
+
         </div>
-      </div>
+      )}
+
+      {/* ===================================================
+          VIEW EVALUATION + COMMENTS
+      =================================================== */}
+
+      {viewingEvaluation && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-background shadow-2xl">
+
+            {/* HEADER */}
+
+            <div className="sticky top-0 z-20 bg-background px-6 py-5 border-b border-border flex items-center justify-between">
+
+              <div>
+
+                <h2 className="text-lg font-bold">
+                  Evaluation Details
+                </h2>
+
+                <p className="text-xs text-muted-foreground mt-1">
+                  Evaluation #
+                  {
+                    viewingEvaluation.evaluationId
+                  }
+                </p>
+
+              </div>
+
+              <button
+                onClick={
+                  closeView
+                }
+                className="h-9 w-9 rounded-lg hover:bg-accent grid place-items-center"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+            </div>
+
+            {/* BODY */}
+
+            <div className="p-6 space-y-6">
+
+              {/* DETAILS */}
+
+              <div className="grid sm:grid-cols-2 gap-4">
+
+                <Detail
+                  label="Evaluation ID"
+                  value={String(
+                    viewingEvaluation.evaluationId
+                  )}
+                />
+
+                <Detail
+                  label="Decision"
+                  value={
+                    viewingEvaluation.decision
+                  }
+                  badge
+                />
+
+                <Detail
+                  label="Originality"
+                  value={`${viewingEvaluation.originalityScore}/10`}
+                  score
+                />
+
+                <Detail
+                  label="Creativity"
+                  value={`${viewingEvaluation.creativityScore}/10`}
+                  score
+                />
+
+                <Detail
+                  label="Market Potential"
+                  value={`${viewingEvaluation.marketPotentialScore}/10`}
+                  score
+                />
+
+                <Detail
+                  label="Feasibility"
+                  value={`${viewingEvaluation.feasibilityScore}/10`}
+                  score
+                />
+
+                <Detail
+                  label="Overall Score"
+                  value={`${viewingEvaluation.overallScore}/10`}
+                  score
+                />
+
+              </div>
+
+              {/* REMARKS */}
+
+              <div className="rounded-xl border border-border p-4">
+
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Remarks
+                </div>
+
+                <p className="mt-2 text-sm leading-6">
+                  {viewingEvaluation.remarks ||
+                    "No remarks provided."}
+                </p>
+
+              </div>
+
+              {/* =================================================
+                  COMMENTS
+              ================================================= */}
+
+              <div className="rounded-2xl border border-border overflow-hidden">
+
+                {/* HEADER */}
+
+                <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+
+                  <div>
+
+                    <div className="flex items-center gap-2">
+
+                      <MessageSquare className="h-4 w-4 text-primary" />
+
+                      <span className="text-sm font-semibold">
+                        Evaluation Comments
+                      </span>
+
+                    </div>
+
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Discussion and feedback for this evaluation.
+                    </p>
+
+                  </div>
+
+                  <Chip variant="info">
+
+                    {comments.length}{" "}
+                    {comments.length ===
+                    1
+                      ? "comment"
+                      : "comments"}
+
+                  </Chip>
+
+                </div>
+
+                {/* BODY */}
+
+                <div className="p-5 space-y-4">
+
+                  {commentsLoading ? (
+
+                    <div className="py-8 text-center">
+
+                      <RefreshCw className="h-6 w-6 mx-auto animate-spin text-primary" />
+
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Loading comments...
+                      </p>
+
+                    </div>
+
+                  ) : comments.length ===
+                    0 ? (
+
+                    <div className="py-8 text-center">
+
+                      <div className="mx-auto h-11 w-11 rounded-xl bg-primary/10 text-primary grid place-items-center">
+
+                        <MessageSquare className="h-5 w-5" />
+
+                      </div>
+
+                      <p className="mt-3 text-sm font-medium">
+                        No comments yet
+                      </p>
+
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Add the first comment for this evaluation.
+                      </p>
+
+                    </div>
+
+                  ) : (
+
+                    <div className="space-y-3">
+
+                      {comments.map(
+                        (
+                          comment
+                        ) => (
+
+                          <div
+                            key={
+                              comment.commentId
+                            }
+                            className="rounded-xl border border-border bg-surface p-4"
+                          >
+
+                            <div className="flex items-start justify-between gap-4">
+
+                              <div className="flex items-center gap-2">
+
+                                <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary grid place-items-center text-xs font-bold">
+                                  {comment.userId}
+                                </div>
+
+                                <div>
+
+                                  <div className="text-xs font-semibold">
+                                    User #
+                                    {
+                                      comment.userId
+                                    }
+                                  </div>
+
+                                  <div className="text-[10px] text-muted-foreground">
+                                    Comment #
+                                    {
+                                      comment.commentId
+                                    }
+                                  </div>
+
+                                </div>
+
+                              </div>
+
+                              {canDeleteComments && (
+                                <button
+                                  title="Delete comment"
+                                  onClick={() =>
+                                    deleteComment(
+                                      comment.commentId
+                                    )
+                                  }
+                                  disabled={
+                                    commentDeletingId ===
+                                    comment.commentId
+                                  }
+                                  className="h-8 w-8 rounded-lg border border-destructive/30 text-destructive grid place-items-center hover:bg-destructive/10 disabled:opacity-50"
+                                >
+
+                                  {commentDeletingId ===
+                                  comment.commentId ? (
+                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  )}
+
+                                </button>
+                              )}
+
+                            </div>
+
+                            <p className="mt-3 text-sm leading-6 text-muted-foreground whitespace-pre-wrap">
+                              {
+                                comment.comment
+                              }
+                            </p>
+
+                          </div>
+
+                        )
+                      )}
+
+                    </div>
+                  )}
+
+                  {/* =================================================
+                      ADD COMMENT
+                  ================================================= */}
+
+                  {canManageComments && (
+                    <div className="pt-4 border-t border-border">
+
+                      <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                        Add Comment
+                      </div>
+
+                      <textarea
+                        value={
+                          commentText
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setCommentText(
+                            event.target.value
+                          )
+                        }
+                        maxLength={2000}
+                        rows={4}
+                        placeholder="Write your evaluation comment..."
+                        className="w-full px-3.5 py-3 rounded-xl bg-background border border-border text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+
+                      <div className="flex items-center justify-between mt-2">
+
+                        <span className="text-[11px] text-muted-foreground">
+                          {
+                            commentText.length
+                          }
+                          /2000
+                        </span>
+
+                        <button
+                          onClick={
+                            addComment
+                          }
+                          disabled={
+                            commentSaving ||
+                            !commentText.trim() ||
+                            !evaluatorId
+                          }
+                          className="h-10 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
+                        >
+
+                          {commentSaving ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+
+                          {commentSaving
+                            ? "Adding..."
+                            : "Add Comment"}
+
+                        </button>
+
+                      </div>
+
+                    </div>
+                  )}
+
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* FOOTER */}
+
+            <div className="px-6 py-4 border-t border-border flex justify-end">
+
+              <button
+                onClick={
+                  closeView
+                }
+                className="h-10 px-5 rounded-xl border border-border hover:bg-accent text-sm font-semibold"
+              >
+                Close
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
     </DashboardLayout>
   );
 }
+
+/* =========================================================
+   METRIC
+========================================================= */
+
+function Metric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <Card>
+
+      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+        {label}
+      </div>
+
+      <div className="mt-2 text-2xl font-bold">
+        {value}
+      </div>
+
+    </Card>
+  );
+}
+
+/* =========================================================
+   SCORE
+========================================================= */
+
+function Score({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: number;
+  highlight?: boolean;
+}) {
+  const numericValue =
+    Number(value ?? 0);
+
+  return (
+    <div className="rounded-xl border border-border p-3">
+
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+
+      <div
+        className={cn(
+          "mt-1 text-lg font-bold",
+          getScoreClass(
+            numericValue
+          ),
+          highlight &&
+            "text-xl"
+        )}
+      >
+
+        {numericValue.toFixed(
+          highlight ? 1 : 0
+        )}
+
+        <span className="text-xs text-muted-foreground font-normal">
+          /10
+        </span>
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   SCORE INPUT
+========================================================= */
+
+function ScoreInput({
+  label,
+  value,
+  onChange,
+  highlight = false,
+  decimal = false,
+}: {
+  label: string;
+  value: number;
+  onChange: (
+    value: string
+  ) => void;
+  highlight?: boolean;
+  decimal?: boolean;
+}) {
+  return (
+    <label className="block">
+
+      <div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+
+      <div className="relative">
+
+        <input
+          type="number"
+          min="0"
+          max="10"
+          step={
+            decimal
+              ? "0.1"
+              : "1"
+          }
+          value={value}
+          onChange={(event) =>
+            onChange(
+              event.target.value
+            )
+          }
+          className={cn(
+            "w-full h-11 px-3.5 pr-12 rounded-xl bg-surface border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring",
+            highlight &&
+              "border-primary/50"
+          )}
+        />
+
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+          /10
+        </span>
+
+      </div>
+
+    </label>
+  );
+}
+
+/* =========================================================
+   READ ONLY FIELD
+========================================================= */
+
+function Field({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <label className="block">
+
+      <div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+
+      <input
+        type="text"
+        value={value}
+        disabled
+        readOnly
+        className="w-full h-11 px-3.5 rounded-xl bg-surface border border-border text-sm opacity-70"
+      />
+
+    </label>
+  );
+}
+
+/* =========================================================
+   DETAIL
+========================================================= */
+
+function Detail({
+  label,
+  value,
+  badge = false,
+  score = false,
+}: {
+  label: string;
+  value: string;
+  badge?: boolean;
+  score?: boolean;
+}) {
+  const numericScore =
+    Number(
+      value.replace(
+        "/10",
+        ""
+      )
+    );
+
+  return (
+    <div className="rounded-xl border border-border p-4">
+
+      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+        {label}
+      </div>
+
+      {badge ? (
+
+        <div className="mt-2">
+
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold",
+              getDecisionClass(
+                value
+              )
+            )}
+          >
+
+            {value ===
+            "REVISION_REQUIRED"
+              ? "REVISION REQUIRED"
+              : value}
+
+          </span>
+
+        </div>
+
+      ) : (
+
+        <div
+          className={cn(
+            "mt-2 font-semibold",
+            score &&
+              getScoreClass(
+                numericScore
+              )
+          )}
+        >
+          {value}
+        </div>
+
+      )}
+
+    </div>
+  );
+}
+
+export default EvaluationPage;

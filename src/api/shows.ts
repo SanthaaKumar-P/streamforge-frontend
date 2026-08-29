@@ -5,7 +5,8 @@ export type ShowStatus =
   | "APPROVED"
   | "REJECTED"
   | "UNDER_REVIEW"
-  | "IN_PRODUCTION";
+  | "IN_PRODUCTION"
+  | "SUBMITTED";
 
 export interface ShowCreator {
   userId: number;

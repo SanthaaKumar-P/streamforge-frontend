@@ -1,51 +1,189 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { DashboardLayout, PageHeader } from "@/components/layout/DashboardLayout";
-import { Card, Chip, StatCard } from "@/components/ui-kit";
-import { directory, roleCounts, type DirectoryUser } from "@/lib/directory";
-import { ROLES, useRole } from "@/lib/roles";
-import { Search, UserPlus, Users, ShieldAlert, UserCheck, KeyRound, Ban, Lock } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  DashboardLayout,
+  PageHeader,
+} from "@/components/layout/DashboardLayout";
+import {
+  Card,
+  Chip,
+  StatCard,
+} from "@/components/ui-kit";
+import { apiRequest } from "@/api/client";
+import { useRole } from "@/lib/roles";
+import {
+  Search,
+  UserPlus,
+  Users,
+  ShieldAlert,
+  UserCheck,
+  Lock,
+  Pencil,
+  Trash2,
+  X,
+  Save,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/users")({
   head: () => ({
     meta: [
-      { title: "User Management — Netflix Show Manager" },
-      { name: "description", content: "Administer studio accounts, roles, specialties and access status across the platform." },
-      { property: "og:title", content: "User Management — Netflix Show Manager" },
-      { property: "og:description", content: "Administer studio accounts, roles and access status." },
+      {
+        title:
+          "User Management — Netflix Show Manager",
+      },
+      {
+        name: "description",
+        content:
+          "Administer studio accounts, roles and access status across the platform.",
+      },
+      {
+        property: "og:title",
+        content:
+          "User Management — Netflix Show Manager",
+      },
+      {
+        property: "og:description",
+        content:
+          "Administer studio accounts, roles and access status.",
+      },
     ],
   }),
+
   component: UsersPage,
 });
 
+/* =========================================================
+   TYPES
+========================================================= */
+
+interface RoleResponse {
+  roleId: number;
+  roleName: string;
+  description?: string;
+}
+
+interface UserResponse {
+  userId: number;
+  fullName: string;
+  username: string;
+  email: string;
+  phone?: string;
+  employeeCode?: string;
+  bio?: string;
+  isActive?: boolean;
+  role?: RoleResponse;
+}
+
+interface UserForm {
+  fullName: string;
+  username: string;
+  email: string;
+  password: string;
+  phone: string;
+  employeeCode: string;
+  bio: string;
+  roleId: string;
+}
+
+/* =========================================================
+   INITIAL FORM
+========================================================= */
+
+const emptyForm: UserForm = {
+  fullName: "",
+  username: "",
+  email: "",
+  password: "",
+  phone: "",
+  employeeCode: "",
+  bio: "",
+  roleId: "",
+};
+
+/* =========================================================
+   ROUTE
+========================================================= */
+
 function UsersPage() {
   const { can, profile } = useRole();
-  const [q, setQ] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("ALL");
-  const [users, setUsers] = useState<DirectoryUser[]>(directory);
 
-  const filtered = useMemo(
-    () =>
-      users.filter(
-        (u) =>
-          (roleFilter === "ALL" || u.role === roleFilter) &&
-          `${u.username} ${u.email} ${u.specialty} ${u.netflixId}`.toLowerCase().includes(q.toLowerCase()),
-      ),
-    [users, q, roleFilter],
-  );
+  const [users, setUsers] =
+    useState<UserResponse[]>([]);
+
+  const [roles, setRoles] =
+    useState<RoleResponse[]>([]);
+
+  const [query, setQuery] =
+    useState("");
+
+  const [roleFilter, setRoleFilter] =
+    useState("ALL");
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [deletingId, setDeletingId] =
+    useState<number | null>(null);
+
+  const [error, setError] =
+    useState("");
+
+  const [success, setSuccess] =
+    useState("");
+
+  const [showForm, setShowForm] =
+    useState(false);
+
+  const [editingUser, setEditingUser] =
+    useState<UserResponse | null>(null);
+
+  const [form, setForm] =
+    useState<UserForm>(emptyForm);
+
+  /* =======================================================
+     ACCESS CHECK
+  ======================================================= */
 
   if (!can("manage_users")) {
     return (
       <DashboardLayout>
         <div className="min-h-[60vh] grid place-items-center">
           <Card className="max-w-md text-center py-12">
-            <div className="mx-auto h-14 w-14 grid place-items-center rounded-2xl bg-destructive/15 text-destructive mb-5">
+            <div
+              className="
+                mx-auto
+                h-14
+                w-14
+                grid
+                place-items-center
+                rounded-2xl
+                bg-destructive/15
+                text-destructive
+                mb-5
+              "
+            >
               <Lock className="h-7 w-7" />
             </div>
-            <h2 className="text-xl font-bold">Access restricted</h2>
+
+            <h2 className="text-xl font-bold">
+              Access restricted
+            </h2>
+
             <p className="text-sm text-muted-foreground mt-2">
-              User management requires the Administrator role. You are currently signed in as {profile.label}.
+              User management requires the
+              Administrator role. You are
+              currently signed in as{" "}
+              {profile.label}.
             </p>
           </Card>
         </div>
@@ -53,123 +191,1497 @@ function UsersPage() {
     );
   }
 
+  /* =======================================================
+     LOAD USERS + ROLES
+  ======================================================= */
+
+  async function loadData() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const [userData, roleData] =
+        await Promise.all([
+          apiRequest<UserResponse[]>(
+            "/api/users"
+          ),
+
+          apiRequest<RoleResponse[]>(
+            "/api/roles"
+          ),
+        ]);
+
+      setUsers(
+        Array.isArray(userData)
+          ? userData
+          : []
+      );
+
+      setRoles(
+        Array.isArray(roleData)
+          ? roleData
+          : []
+      );
+    } catch (err) {
+      console.error(
+        "Failed to load users:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load users"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  /* =======================================================
+     FILTER
+  ======================================================= */
+
+  const filteredUsers = useMemo(() => {
+    const search =
+      query.trim().toLowerCase();
+
+    return users.filter((user) => {
+      const roleName =
+        user.role?.roleName || "";
+
+      const matchesRole =
+        roleFilter === "ALL" ||
+        roleName === roleFilter;
+
+      const searchable = [
+        user.fullName,
+        user.username,
+        user.email,
+        user.phone,
+        user.employeeCode,
+        user.bio,
+        roleName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return (
+        matchesRole &&
+        (!search ||
+          searchable.includes(search))
+      );
+    });
+  }, [
+    users,
+    query,
+    roleFilter,
+  ]);
+
+  /* =======================================================
+     STATISTICS
+  ======================================================= */
+
+  const totalUsers =
+    users.length;
+
+  const activeUsers =
+    users.filter(
+      (user) =>
+        user.isActive === true
+    ).length;
+
+  const inactiveUsers =
+    users.filter(
+      (user) =>
+        user.isActive !== true
+    ).length;
+
+  const privilegedUsers =
+    users.filter((user) => {
+      const role =
+        user.role?.roleName;
+
+      return (
+        role === "ADMIN" ||
+        role === "CONTENT_MANAGER"
+      );
+    }).length;
+
+  /* =======================================================
+     OPEN CREATE FORM
+  ======================================================= */
+
+  function openCreateForm() {
+    setEditingUser(null);
+    setForm({
+      ...emptyForm,
+      roleId:
+        roles.length > 0
+          ? String(roles[0].roleId)
+          : "",
+    });
+
+    setError("");
+    setSuccess("");
+    setShowForm(true);
+  }
+
+  /* =======================================================
+     OPEN EDIT FORM
+  ======================================================= */
+
+  function openEditForm(
+    user: UserResponse
+  ) {
+    setEditingUser(user);
+
+    setForm({
+      fullName:
+        user.fullName || "",
+
+      username:
+        user.username || "",
+
+      email:
+        user.email || "",
+
+      /*
+       * Password is intentionally empty.
+       *
+       * Backend only updates password
+       * when a value is supplied.
+       */
+      password: "",
+
+      phone:
+        user.phone || "",
+
+      employeeCode:
+        user.employeeCode || "",
+
+      bio:
+        user.bio || "",
+
+      roleId:
+        user.role?.roleId
+          ? String(user.role.roleId)
+          : "",
+    });
+
+    setError("");
+    setSuccess("");
+    setShowForm(true);
+  }
+
+  /* =======================================================
+     CLOSE FORM
+  ======================================================= */
+
+  function closeForm() {
+    if (saving) {
+      return;
+    }
+
+    setShowForm(false);
+    setEditingUser(null);
+    setForm(emptyForm);
+  }
+
+  /* =======================================================
+     FORM CHANGE
+  ======================================================= */
+
+  function updateForm(
+    field: keyof UserForm,
+    value: string
+  ) {
+    setForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+  }
+
+  /* =======================================================
+     VALIDATION
+  ======================================================= */
+
+  function validateForm() {
+    if (
+      form.fullName.trim().length <
+      2
+    ) {
+      return "Full name must contain at least 2 characters.";
+    }
+
+    if (
+      form.fullName.trim().length >
+      100
+    ) {
+      return "Full name cannot exceed 100 characters.";
+    }
+
+    if (
+      form.username.trim().length <
+      3
+    ) {
+      return "Username must contain at least 3 characters.";
+    }
+
+    if (
+      form.username.trim().length >
+      50
+    ) {
+      return "Username cannot exceed 50 characters.";
+    }
+
+    if (!form.email.trim()) {
+      return "Email is required.";
+    }
+
+    if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        form.email.trim()
+      )
+    ) {
+      return "Enter a valid email address.";
+    }
+
+    /*
+     * Password is required during CREATE
+     * because the backend explicitly checks it.
+     */
+    if (!editingUser) {
+      if (
+        form.password.trim().length <
+        6
+      ) {
+        return "Password must contain at least 6 characters.";
+      }
+
+      if (
+        form.password.length > 100
+      ) {
+        return "Password cannot exceed 100 characters.";
+      }
+    }
+
+    /*
+     * During EDIT, password is optional.
+     */
+    if (
+      editingUser &&
+      form.password &&
+      form.password.length < 6
+    ) {
+      return "Password must contain at least 6 characters.";
+    }
+
+    if (
+      form.phone &&
+      !/^[0-9]{10}$/.test(
+        form.phone
+      )
+    ) {
+      return "Phone number must contain exactly 10 digits.";
+    }
+
+    if (
+      form.employeeCode.length >
+      50
+    ) {
+      return "Employee code cannot exceed 50 characters.";
+    }
+
+    if (
+      form.bio.length > 500
+    ) {
+      return "Bio cannot exceed 500 characters.";
+    }
+
+    if (
+      !form.roleId ||
+      Number(form.roleId) <= 0
+    ) {
+      return "Please select a role.";
+    }
+
+    return "";
+  }
+
+  /* =======================================================
+     CREATE / UPDATE
+  ======================================================= */
+
+  async function saveUser(
+    event: React.FormEvent
+  ) {
+    event.preventDefault();
+
+    setError("");
+    setSuccess("");
+
+    const validationError =
+      validateForm();
+
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const payload: Record<
+        string,
+        unknown
+      > = {
+        fullName:
+          form.fullName.trim(),
+
+        username:
+          form.username.trim(),
+
+        email:
+          form.email.trim(),
+
+        phone:
+          form.phone.trim() || null,
+
+        employeeCode:
+          form.employeeCode.trim() ||
+          null,
+
+        bio:
+          form.bio.trim() || null,
+
+        roleId:
+          Number(form.roleId),
+      };
+
+      /*
+       * Only send password when:
+       *
+       * 1. Creating a user
+       * 2. Updating and a new password
+       *    was actually entered
+       */
+      if (
+        !editingUser ||
+        form.password.trim()
+      ) {
+        payload.password =
+          form.password;
+      }
+
+      const response =
+        editingUser
+          ? await apiRequest<UserResponse>(
+              `/api/users/${editingUser.userId}`,
+              {
+                method: "PUT",
+                body: JSON.stringify(
+                  payload
+                ),
+              }
+            )
+          : await apiRequest<UserResponse>(
+              "/api/users",
+              {
+                method: "POST",
+                body: JSON.stringify(
+                  payload
+                ),
+              }
+            );
+
+      if (editingUser) {
+        setUsers((previous) =>
+          previous.map((user) =>
+            user.userId ===
+            editingUser.userId
+              ? response
+              : user
+          )
+        );
+
+        setSuccess(
+          "User updated successfully."
+        );
+      } else {
+        setUsers((previous) => [
+          ...previous,
+          response,
+        ]);
+
+        setSuccess(
+          "User created successfully."
+        );
+      }
+
+      /*
+       * Close the modal after a successful
+       * backend operation.
+       */
+      setShowForm(false);
+      setEditingUser(null);
+      setForm(emptyForm);
+    } catch (err) {
+      console.error(
+        "Failed to save user:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to save user."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /* =======================================================
+     DELETE USER
+  ======================================================= */
+
+  async function deleteUser(
+    user: UserResponse
+  ) {
+    const confirmed =
+      window.confirm(
+        `Are you sure you want to delete "${user.fullName}"? This action cannot be undone.`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingId(user.userId);
+    setError("");
+    setSuccess("");
+
+    try {
+      await apiRequest<void>(
+        `/api/users/${user.userId}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      setUsers((previous) =>
+        previous.filter(
+          (item) =>
+            item.userId !==
+            user.userId
+        )
+      );
+
+      setSuccess(
+        "User deleted successfully."
+      );
+    } catch (err) {
+      console.error(
+        "Failed to delete user:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to delete user."
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  /* =======================================================
+     LOADING
+  ======================================================= */
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <PageHeader
+          title="User Management"
+          description="Loading users and roles..."
+        />
+
+        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+          {Array.from({
+            length: 4,
+          }).map((_, index) => (
+            <Card
+              key={index}
+              className="animate-pulse"
+            >
+              <div className="h-3 w-24 rounded bg-muted" />
+
+              <div className="mt-4 h-8 w-16 rounded bg-muted" />
+            </Card>
+          ))}
+        </div>
+
+        <Card className="animate-pulse">
+          <div className="h-10 rounded bg-muted" />
+        </Card>
+      </DashboardLayout>
+    );
+  }
+
+  /* =======================================================
+     MAIN PAGE
+  ======================================================= */
+
   return (
     <DashboardLayout>
       <PageHeader
         title="User Management"
-        description="Accounts, roles, specialties and session health across the studio."
+        description="Accounts, roles and access information across the studio."
         actions={
-          <button className="h-10 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 transition shadow-[var(--shadow-glow)]">
-            <UserPlus className="h-4 w-4" /> Invite user
+          <button
+            type="button"
+            onClick={openCreateForm}
+            className="
+              h-10
+              px-4
+              rounded-xl
+              bg-primary
+              text-primary-foreground
+              text-sm
+              font-semibold
+              inline-flex
+              items-center
+              gap-2
+              hover:opacity-90
+              transition
+              shadow-[var(--shadow-glow)]
+            "
+          >
+            <UserPlus className="h-4 w-4" />
+            Create user
           </button>
         }
       />
 
+      {/* =====================================================
+          SUCCESS / ERROR
+      ===================================================== */}
+
+      {error && (
+        <div
+          className="
+            mb-4
+            rounded-xl
+            border
+            border-destructive/30
+            bg-destructive/10
+            p-4
+            flex
+            items-start
+            gap-3
+          "
+        >
+          <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+
+          <div className="text-sm text-destructive">
+            {error}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setError("")}
+            className="ml-auto"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {success && (
+        <div
+          className="
+            mb-4
+            rounded-xl
+            border
+            border-success/30
+            bg-success/10
+            p-4
+            text-sm
+            text-success
+          "
+        >
+          {success}
+        </div>
+      )}
+
+      {/* =====================================================
+          STATS
+      ===================================================== */}
+
       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total accounts" value={String(users.length)} icon={<Users className="h-5 w-5" />} accent="primary" />
-        <StatCard label="Active" value={String(users.filter((u) => u.isActive).length)} icon={<UserCheck className="h-5 w-5" />} accent="success" />
-        <StatCard label="Suspended" value={String(users.filter((u) => !u.isActive).length)} icon={<Ban className="h-5 w-5" />} accent="warning" />
-        <StatCard label="Privileged roles" value={String((roleCounts.ADMIN ?? 0) + (roleCounts.CONTENT_MANAGER ?? 0))} icon={<ShieldAlert className="h-5 w-5" />} accent="info" />
+        <StatCard
+          label="Total accounts"
+          value={String(totalUsers)}
+          icon={
+            <Users className="h-5 w-5" />
+          }
+          accent="primary"
+        />
+
+        <StatCard
+          label="Active"
+          value={String(activeUsers)}
+          icon={
+            <UserCheck className="h-5 w-5" />
+          }
+          accent="success"
+        />
+
+        <StatCard
+          label="Inactive"
+          value={String(inactiveUsers)}
+          icon={
+            <Lock className="h-5 w-5" />
+          }
+          accent="warning"
+        />
+
+        <StatCard
+          label="Privileged roles"
+          value={String(
+            privilegedUsers
+          )}
+          icon={
+            <ShieldAlert className="h-5 w-5" />
+          }
+          accent="info"
+        />
       </div>
+
+      {/* =====================================================
+          SEARCH + FILTER
+      ===================================================== */}
 
       <Card className="mb-6">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-0 flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search
+              className="
+                absolute
+                left-3
+                top-1/2
+                -translate-y-1/2
+                h-4
+                w-4
+                text-muted-foreground
+              "
+            />
+
             <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search by name, email, Netflix ID or specialty…"
-              className="w-full h-10 pl-10 pr-3 rounded-xl bg-surface border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={query}
+              onChange={(event) =>
+                setQuery(
+                  event.target.value
+                )
+              }
+              placeholder="Search by name, username, email, employee code or role..."
+              className="
+                w-full
+                h-10
+                pl-10
+                pr-3
+                rounded-xl
+                bg-surface
+                border
+                border-border
+                text-sm
+                focus:outline-none
+                focus:ring-2
+                focus:ring-ring
+              "
             />
           </div>
+
           <div className="flex flex-wrap gap-1.5">
-            {["ALL", ...ROLES.slice(1).map((r) => r.id)].map((r) => (
+            <button
+              type="button"
+              onClick={() =>
+                setRoleFilter("ALL")
+              }
+              className={cn(
+                "h-9 px-3 rounded-lg text-xs font-medium transition border",
+                roleFilter === "ALL"
+                  ? "bg-primary text-primary-foreground border-transparent"
+                  : "border-border hover:bg-accent"
+              )}
+            >
+              All roles
+            </button>
+
+            {roles.map((role) => (
               <button
-                key={r}
-                onClick={() => setRoleFilter(r)}
+                key={role.roleId}
+                type="button"
+                onClick={() =>
+                  setRoleFilter(
+                    role.roleName
+                  )
+                }
                 className={cn(
                   "h-9 px-3 rounded-lg text-xs font-medium transition border",
-                  roleFilter === r ? "bg-primary text-primary-foreground border-transparent" : "border-border hover:bg-accent",
+                  roleFilter ===
+                    role.roleName
+                    ? "bg-primary text-primary-foreground border-transparent"
+                    : "border-border hover:bg-accent"
                 )}
               >
-                {r === "ALL" ? "All roles" : ROLES.find((x) => x.id === r)!.label}
+                {formatRoleName(
+                  role.roleName
+                )}
               </button>
             ))}
           </div>
         </div>
       </Card>
 
+      {/* =====================================================
+          USERS TABLE
+      ===================================================== */}
+
       <Card className="!p-0 overflow-hidden">
         <div className="overflow-x-auto scrollbar-thin">
           <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase tracking-wider text-muted-foreground bg-surface-elevated/40">
+            <thead
+              className="
+                text-left
+                text-xs
+                uppercase
+                tracking-wider
+                text-muted-foreground
+                bg-surface-elevated/40
+              "
+            >
               <tr>
-                <th className="p-4">User</th>
-                <th className="p-4">Netflix ID</th>
-                <th className="p-4">Role</th>
-                <th className="p-4">Specialty</th>
-                <th className="p-4">Last login</th>
-                <th className="p-4">Status</th>
-                <th className="p-4 text-right">Actions</th>
+                <th className="p-4">
+                  User
+                </th>
+
+                <th className="p-4">
+                  Employee Code
+                </th>
+
+                <th className="p-4">
+                  Role
+                </th>
+
+                <th className="p-4">
+                  Phone
+                </th>
+
+                <th className="p-4">
+                  Status
+                </th>
+
+                <th className="p-4 text-right">
+                  Actions
+                </th>
               </tr>
             </thead>
+
             <tbody>
-              {filtered.map((u) => (
-                <tr key={u.id} className="border-t border-border hover:bg-accent/40 transition">
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <img src={u.avatar} alt="" className="h-9 w-9 rounded-full object-cover" />
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{u.username}</div>
-                        <div className="text-xs text-muted-foreground truncate">{u.email}</div>
+              {filteredUsers.map(
+                (user) => (
+                  <tr
+                    key={
+                      user.userId
+                    }
+                    className="
+                      border-t
+                      border-border
+                      hover:bg-accent/40
+                      transition
+                    "
+                  >
+                    {/* USER */}
+
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="
+                            h-10
+                            w-10
+                            rounded-full
+                            bg-primary/10
+                            text-primary
+                            grid
+                            place-items-center
+                            shrink-0
+                            font-semibold
+                          "
+                        >
+                          {getInitials(
+                            user.fullName
+                          )}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">
+                            {
+                              user.fullName
+                            }
+                          </div>
+
+                          <div className="text-xs text-muted-foreground truncate">
+                            @{user.username}
+                          </div>
+
+                          <div className="text-xs text-muted-foreground truncate">
+                            {user.email}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="p-4 font-mono text-xs text-muted-foreground">{u.netflixId}</td>
-                  <td className="p-4">
-                    <select
-                      value={u.role}
-                      onChange={(e) =>
-                        setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, role: e.target.value as DirectoryUser["role"] } : x)))
-                      }
-                      className="h-9 px-2 rounded-lg bg-surface border border-border text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      {ROLES.slice(1).map((r) => (
-                        <option key={r.id} value={r.id}>{r.label}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="p-4 text-muted-foreground">{u.specialty}</td>
-                  <td className="p-4 text-muted-foreground text-xs">
-                    {new Date(u.lastLogin).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                  </td>
-                  <td className="p-4">
-                    <Chip variant={u.isActive ? "success" : "danger"}>{u.isActive ? "Active" : "Suspended"}</Chip>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex justify-end gap-1.5">
-                      <button title="Force password rotation" className="h-8 w-8 grid place-items-center rounded-lg border border-border hover:bg-accent transition">
-                        <KeyRound className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, isActive: !x.isActive } : x)))}
-                        className={cn(
-                          "h-8 px-3 rounded-lg border text-xs transition",
-                          u.isActive ? "border-border hover:bg-destructive/20 hover:text-destructive" : "border-border hover:bg-success/20 hover:text-success",
+                    </td>
+
+                    {/* EMPLOYEE CODE */}
+
+                    <td className="p-4">
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {user.employeeCode ||
+                          "—"}
+                      </span>
+                    </td>
+
+                    {/* ROLE */}
+
+                    <td className="p-4">
+                      <Chip variant="info">
+                        {formatRoleName(
+                          user.role
+                            ?.roleName
                         )}
+                      </Chip>
+                    </td>
+
+                    {/* PHONE */}
+
+                    <td className="p-4 text-muted-foreground">
+                      {user.phone ||
+                        "—"}
+                    </td>
+
+                    {/* STATUS */}
+
+                    <td className="p-4">
+                      <Chip
+                        variant={
+                          user.isActive
+                            ? "success"
+                            : "danger"
+                        }
                       >
-                        {u.isActive ? "Suspend" : "Reactivate"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {user.isActive
+                          ? "Active"
+                          : "Inactive"}
+                      </Chip>
+                    </td>
+
+                    {/* ACTIONS */}
+
+                    <td className="p-4">
+                      <div className="flex justify-end gap-1.5">
+                        {/* EDIT */}
+
+                        <button
+                          type="button"
+                          title="Edit user"
+                          onClick={() =>
+                            openEditForm(
+                              user
+                            )
+                          }
+                          className="
+                            h-8
+                            px-3
+                            rounded-lg
+                            border
+                            border-border
+                            text-xs
+                            inline-flex
+                            items-center
+                            gap-1.5
+                            hover:bg-accent
+                            transition
+                          "
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+
+                        {/* DELETE */}
+
+                        <button
+                          type="button"
+                          title="Delete user"
+                          disabled={
+                            deletingId ===
+                            user.userId
+                          }
+                          onClick={() =>
+                            deleteUser(
+                              user
+                            )
+                          }
+                          className="
+                            h-8
+                            px-3
+                            rounded-lg
+                            border
+                            border-border
+                            text-xs
+                            inline-flex
+                            items-center
+                            gap-1.5
+                            hover:bg-destructive/20
+                            hover:text-destructive
+                            transition
+                            disabled:opacity-50
+                          "
+                        >
+                          {deletingId ===
+                          user.userId ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              )}
             </tbody>
           </table>
         </div>
-        {filtered.length === 0 && <div className="p-10 text-center text-sm text-muted-foreground">No users match your filters.</div>}
+
+        {/* EMPTY */}
+
+        {filteredUsers.length ===
+          0 && (
+          <div className="p-12 text-center">
+            <Users className="h-8 w-8 mx-auto text-muted-foreground/50 mb-3" />
+
+            <div className="text-sm font-medium">
+              No users found
+            </div>
+
+            <div className="text-xs text-muted-foreground mt-1">
+              Try changing your search
+              or role filter.
+            </div>
+          </div>
+        )}
+
+        {/* FOOTER */}
+
+        <div
+          className="
+            p-4
+            border-t
+            border-border
+            text-xs
+            text-muted-foreground
+            flex
+            justify-between
+            gap-3
+          "
+        >
+          <span>
+            Showing{" "}
+            {filteredUsers.length} of{" "}
+            {users.length} users
+          </span>
+
+          <span>
+            {roles.length} roles available
+          </span>
+        </div>
       </Card>
+
+      {/* =====================================================
+          CREATE / EDIT MODAL
+      ===================================================== */}
+
+      {showForm && (
+        <div
+          className="
+            fixed
+            inset-0
+            z-50
+            bg-black/60
+            backdrop-blur-sm
+            flex
+            items-center
+            justify-center
+            p-4
+          "
+        >
+          <div
+            className="
+              w-full
+              max-w-2xl
+              max-h-[90vh]
+              overflow-y-auto
+              rounded-2xl
+              border
+              border-border
+              bg-background
+              shadow-2xl
+            "
+          >
+            {/* MODAL HEADER */}
+
+            <div
+              className="
+                p-5
+                border-b
+                border-border
+                flex
+                items-center
+                justify-between
+                gap-3
+              "
+            >
+              <div>
+                <div className="text-lg font-semibold">
+                  {editingUser
+                    ? "Edit User"
+                    : "Create User"}
+                </div>
+
+                <div className="text-xs text-muted-foreground mt-1">
+                  {editingUser
+                    ? "Update account details, role or password."
+                    : "Create a new StreamForge user account."}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeForm}
+                disabled={saving}
+                className="
+                  h-9
+                  w-9
+                  rounded-lg
+                  grid
+                  place-items-center
+                  hover:bg-accent
+                  transition
+                "
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* MODAL BODY */}
+
+            <form
+              onSubmit={saveUser}
+              className="p-5 space-y-5"
+            >
+              {/* NAME + USERNAME */}
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <FormField
+                  label="Full name"
+                  required
+                >
+                  <input
+                    value={form.fullName}
+                    onChange={(event) =>
+                      updateForm(
+                        "fullName",
+                        event.target.value
+                      )
+                    }
+                    maxLength={100}
+                    placeholder="John Doe"
+                    className={inputClass}
+                  />
+                </FormField>
+
+                <FormField
+                  label="Username"
+                  required
+                >
+                  <input
+                    value={form.username}
+                    onChange={(event) =>
+                      updateForm(
+                        "username",
+                        event.target.value
+                      )
+                    }
+                    minLength={3}
+                    maxLength={50}
+                    placeholder="john.doe"
+                    className={inputClass}
+                  />
+                </FormField>
+              </div>
+
+              {/* EMAIL + PHONE */}
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <FormField
+                  label="Email"
+                  required
+                >
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(event) =>
+                      updateForm(
+                        "email",
+                        event.target.value
+                      )
+                    }
+                    placeholder="john@example.com"
+                    className={inputClass}
+                  />
+                </FormField>
+
+                <FormField label="Phone">
+                  <input
+                    inputMode="numeric"
+                    value={form.phone}
+                    onChange={(event) =>
+                      updateForm(
+                        "phone",
+                        event.target.value.replace(
+                          /\D/g,
+                          ""
+                        )
+                      )
+                    }
+                    maxLength={10}
+                    placeholder="9876543210"
+                    className={inputClass}
+                  />
+                </FormField>
+              </div>
+
+              {/* PASSWORD + ROLE */}
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <FormField
+                  label={
+                    editingUser
+                      ? "New password"
+                      : "Password"
+                  }
+                  required={
+                    !editingUser
+                  }
+                >
+                  <input
+                    type="password"
+                    value={form.password}
+                    onChange={(event) =>
+                      updateForm(
+                        "password",
+                        event.target.value
+                      )
+                    }
+                    minLength={6}
+                    maxLength={100}
+                    placeholder={
+                      editingUser
+                        ? "Leave blank to keep current"
+                        : "Minimum 6 characters"
+                    }
+                    className={inputClass}
+                  />
+                </FormField>
+
+                <FormField
+                  label="Role"
+                  required
+                >
+                  <select
+                    value={form.roleId}
+                    onChange={(event) =>
+                      updateForm(
+                        "roleId",
+                        event.target.value
+                      )
+                    }
+                    className={inputClass}
+                  >
+                    <option value="">
+                      Select role
+                    </option>
+
+                    {roles.map(
+                      (role) => (
+                        <option
+                          key={
+                            role.roleId
+                          }
+                          value={
+                            role.roleId
+                          }
+                        >
+                          {formatRoleName(
+                            role.roleName
+                          )}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </FormField>
+              </div>
+
+              {/* EMPLOYEE CODE */}
+
+              <FormField label="Employee code">
+                <input
+                  value={
+                    form.employeeCode
+                  }
+                  onChange={(event) =>
+                    updateForm(
+                      "employeeCode",
+                      event.target.value
+                    )
+                  }
+                  maxLength={50}
+                  placeholder="EMP-001"
+                  className={inputClass}
+                />
+              </FormField>
+
+              {/* BIO */}
+
+              <FormField label="Bio">
+                <textarea
+                  value={form.bio}
+                  onChange={(event) =>
+                    updateForm(
+                      "bio",
+                      event.target.value
+                    )
+                  }
+                  maxLength={500}
+                  rows={4}
+                  placeholder="Short description..."
+                  className={`${inputClass} py-3 resize-none`}
+                />
+
+                <div className="mt-1 text-right text-[10px] text-muted-foreground">
+                  {form.bio.length}/500
+                </div>
+              </FormField>
+
+              {/* FORM ERROR */}
+
+              {error && (
+                <div
+                  className="
+                    rounded-xl
+                    border
+                    border-destructive/30
+                    bg-destructive/10
+                    p-3
+                    text-sm
+                    text-destructive
+                  "
+                >
+                  {error}
+                </div>
+              )}
+
+              {/* ACTIONS */}
+
+              <div
+                className="
+                  pt-2
+                  flex
+                  justify-end
+                  gap-2
+                "
+              >
+                <button
+                  type="button"
+                  onClick={closeForm}
+                  disabled={saving}
+                  className="
+                    h-10
+                    px-4
+                    rounded-xl
+                    border
+                    border-border
+                    text-sm
+                    hover:bg-accent
+                    transition
+                  "
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="
+                    h-10
+                    px-5
+                    rounded-xl
+                    bg-primary
+                    text-primary-foreground
+                    text-sm
+                    font-semibold
+                    inline-flex
+                    items-center
+                    gap-2
+                    hover:opacity-90
+                    transition
+                    disabled:opacity-60
+                  "
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      {editingUser
+                        ? "Update user"
+                        : "Create user"}
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
+}
+
+/* =========================================================
+   FORM FIELD
+========================================================= */
+
+function FormField({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <div
+        className="
+          mb-1.5
+          text-xs
+          font-medium
+          uppercase
+          tracking-wider
+          text-muted-foreground
+        "
+      >
+        {label}
+
+        {required && (
+          <span className="text-destructive ml-1">
+            *
+          </span>
+        )}
+      </div>
+
+      {children}
+    </label>
+  );
+}
+
+/* =========================================================
+   INPUT STYLE
+========================================================= */
+
+const inputClass = `
+  w-full
+  h-11
+  px-3.5
+  rounded-xl
+  bg-surface
+  border
+  border-border
+  text-sm
+  focus:outline-none
+  focus:ring-2
+  focus:ring-ring
+`;
+
+/* =========================================================
+   ROLE FORMATTER
+========================================================= */
+
+function formatRoleName(
+  roleName?: string
+) {
+  if (!roleName) {
+    return "No role";
+  }
+
+  return roleName
+    .toLowerCase()
+    .split("_")
+    .map(
+      (part) =>
+        part.charAt(0).toUpperCase() +
+        part.slice(1)
+    )
+    .join(" ");
+}
+
+/* =========================================================
+   INITIALS
+========================================================= */
+
+function getInitials(
+  name?: string
+) {
+  if (!name) {
+    return "?";
+  }
+
+  const parts =
+    name.trim().split(/\s+/);
+
+  if (parts.length === 1) {
+    return parts[0]
+      .slice(0, 2)
+      .toUpperCase();
+  }
+
+  return (
+    parts[0].charAt(0) +
+    parts[parts.length - 1].charAt(0)
+  ).toUpperCase();
 }

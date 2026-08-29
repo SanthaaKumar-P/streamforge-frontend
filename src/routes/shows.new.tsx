@@ -249,7 +249,7 @@ function NewShow() {
           form.expectedReleaseDate ||
           undefined,
 
-        status: "PENDING",
+        status: "SUBMITTED",
 
         creatorId,
       };
@@ -612,7 +612,7 @@ function Step2({
           New submissions will be created with
           <span className="text-primary font-semibold">
             {" "}
-            PENDING
+            SUBMITTED
           </span>{" "}
           status and routed through your evaluation
           workflow.
