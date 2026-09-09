@@ -5,20 +5,14 @@ import {
   PageHeader,
 } from "@/components/layout/DashboardLayout";
 
-import {
-  Card,
-  Chip,
-} from "@/components/ui-kit";
-
-import { useRole } from "@/lib/roles";
+import { Card } from "@/components/ui-kit";
 
 import {
-  apiRequest,
-  downloadFile,
-} from "@/lib/api";
-
-import {
+  AlertCircle,
+  BarChart3,
+  CheckCircle2,
   Download,
+  Eye,
   FileBarChart,
   FileSpreadsheet,
   FileText,
@@ -26,9 +20,6 @@ import {
   RefreshCw,
   Sparkles,
   X,
-  CheckCircle2,
-  AlertCircle,
-  Eye,
 } from "lucide-react";
 
 import {
@@ -40,31 +31,31 @@ import {
 
 import { cn } from "@/lib/utils";
 
+import { useRole } from "@/lib/roles";
+
+import {
+  apiRequest,
+  downloadFile,
+} from "@/lib/api";
+
 
 // ============================================================
 // ROUTE
 // ============================================================
 
-export const Route = createFileRoute("/reports")({
+export const Route = createFileRoute(
+  "/reports"
+)({
   head: () => ({
     meta: [
       {
-        title: "Reports — Netflix Show Manager",
+        title:
+          "Reports — Netflix Show Manager",
       },
       {
         name: "description",
         content:
           "Generate and manage reports across the content lifecycle.",
-      },
-      {
-        property: "og:title",
-        content:
-          "Reports — Netflix Show Manager",
-      },
-      {
-        property: "og:description",
-        content:
-          "Generate and manage studio reports.",
       },
     ],
   }),
@@ -96,24 +87,18 @@ interface Report {
 }
 
 
-interface LoggedInUser {
+interface StoredUser {
   userId?: number;
 
   id?: number;
+
+  user_id?: number;
 
   fullName?: string;
 
   username?: string;
 
   email?: string;
-
-  role?: {
-    roleName?: string;
-
-    name?: string;
-  };
-
-  roleName?: string;
 }
 
 
@@ -121,55 +106,87 @@ interface LoggedInUser {
 // REPORT TEMPLATES
 // ============================================================
 
-const templates = [
+const REPORT_TEMPLATES = [
   {
     id: "content",
-    name: "Content Pipeline Report",
-    type: "CONTENT",
-    desc:
+
+    name:
+      "Content Pipeline Report",
+
+    type:
+      "CONTENT",
+
+    description:
       "Submissions, approvals and rejection analysis.",
-    icon: FileBarChart,
+
+    icon:
+      FileBarChart,
   },
 
   {
     id: "budget",
-    name: "Budget Utilisation Report",
-    type: "BUDGET",
-    desc:
+
+    name:
+      "Budget Utilisation Report",
+
+    type:
+      "BUDGET",
+
+    description:
       "Allocated and actual production budget analysis.",
-    icon: FileSpreadsheet,
+
+    icon:
+      FileSpreadsheet,
   },
 
   {
     id: "production",
-    name: "Production Health Report",
-    type: "PRODUCTION",
-    desc:
+
+    name:
+      "Production Health Report",
+
+    type:
+      "PRODUCTION",
+
+    description:
       "Production status and workflow analysis.",
-    icon: FileText,
+
+    icon:
+      FileText,
   },
 
   {
     id: "roi",
-    name: "ROI & Forecast Report",
-    type: "ROI",
-    desc:
+
+    name:
+      "ROI & Forecast Report",
+
+    type:
+      "ROI",
+
+    description:
       "Business performance and forecast analysis.",
-    icon: Sparkles,
+
+    icon:
+      Sparkles,
   },
 ];
 
 
 // ============================================================
-// HELPER - GET LOGGED IN USER
+// GET STORED USER
 // ============================================================
 
-function getLoggedInUser(): LoggedInUser | null {
+function getStoredUser():
+  StoredUser | null {
 
   try {
 
     const raw =
       localStorage.getItem(
+        "streamforge_user"
+      ) ??
+      sessionStorage.getItem(
         "streamforge_user"
       );
 
@@ -177,12 +194,14 @@ function getLoggedInUser(): LoggedInUser | null {
       return null;
     }
 
-    return JSON.parse(raw);
+    return JSON.parse(
+      raw
+    ) as StoredUser;
 
   } catch (error) {
 
     console.error(
-      "Unable to read logged-in user:",
+      "Unable to read stored user:",
       error
     );
 
@@ -192,115 +211,119 @@ function getLoggedInUser(): LoggedInUser | null {
 
 
 // ============================================================
-// HELPER - GET USER ID
+// GET USER ID
 // ============================================================
 
 function getUserId(
-  user: LoggedInUser | null
+  user: StoredUser | null
 ): number | null {
 
   if (!user) {
     return null;
   }
 
-
-  const possibleId =
+  const rawId =
     user.userId ??
-    user.id;
-
+    user.id ??
+    user.user_id;
 
   if (
-    possibleId === undefined ||
-    possibleId === null
+    rawId === undefined ||
+    rawId === null
   ) {
     return null;
   }
 
-
-  const numericId =
-    Number(possibleId);
-
+  const id =
+    Number(rawId);
 
   if (
-    Number.isNaN(numericId) ||
-    numericId <= 0
+    !Number.isFinite(id) ||
+    id <= 0
   ) {
     return null;
   }
 
-
-  return numericId;
+  return id;
 }
 
 
 // ============================================================
-// HELPER - FORMAT
+// FORMAT
 // ============================================================
 
-function getReportFormat(
+function getFormat(
   report: Report
-): ReportFormat | string {
+): string {
 
   if (report.format) {
 
-    return report.format.toUpperCase();
+    return report.format
+      .toUpperCase();
   }
 
-
-  const filePath =
-    report.filePath || "";
-
+  const path =
+    report.filePath ??
+    "";
 
   const lower =
-    filePath.toLowerCase();
+    path.toLowerCase();
 
-
-  if (lower.endsWith(".pdf")) {
+  if (
+    lower.endsWith(".pdf")
+  ) {
     return "PDF";
   }
 
-
-  if (lower.endsWith(".csv")) {
+  if (
+    lower.endsWith(".csv")
+  ) {
     return "CSV";
   }
 
-
-  if (lower.endsWith(".xlsx")) {
+  if (
+    lower.endsWith(".xlsx")
+  ) {
     return "XLSX";
   }
-
 
   return "FILE";
 }
 
 
 // ============================================================
-// PAGE
+// ROUTE PAGE
 // ============================================================
 
 function ReportsPage() {
 
+  /*
+   * IMPORTANT:
+   *
+   * Do NOT destructure profile here.
+   *
+   * Reports only needs the permission checker.
+   */
   const {
     can,
-    profile,
   } = useRole();
 
 
-  // ----------------------------------------------------------
+  // ==========================================================
   // STATE
-  // ----------------------------------------------------------
+  // ==========================================================
 
   const [
     selectedTemplate,
     setSelectedTemplate,
   ] = useState(
-    templates[0]
+    REPORT_TEMPLATES[0]
   );
 
 
   const [
-    format,
-    setFormat,
+    selectedFormat,
+    setSelectedFormat,
   ] = useState<ReportFormat>(
     "PDF"
   );
@@ -309,82 +332,88 @@ function ReportsPage() {
   const [
     reports,
     setReports,
-  ] = useState<Report[]>([]);
-
-
-  const [
-    user,
-    setUser,
-  ] = useState<LoggedInUser | null>(
-    null
+  ] = useState<Report[]>(
+    []
   );
 
 
   const [
     loading,
     setLoading,
-  ] = useState(true);
+  ] = useState(
+    true
+  );
 
 
   const [
     generating,
     setGenerating,
-  ] = useState(false);
+  ] = useState(
+    false
+  );
 
 
   const [
     downloadingId,
     setDownloadingId,
-  ] = useState<number | null>(
-    null
-  );
+  ] = useState<
+    number | null
+  >(null);
 
 
   const [
     error,
     setError,
-  ] = useState<string | null>(
-    null
-  );
+  ] = useState<
+    string | null
+  >(null);
 
 
   const [
     success,
     setSuccess,
-  ] = useState<string | null>(
-    null
-  );
+  ] = useState<
+    string | null
+  >(null);
 
 
   const [
     selectedReport,
     setSelectedReport,
-  ] = useState<Report | null>(
-    null
-  );
+  ] = useState<
+    Report | null
+  >(null);
 
 
-  // ----------------------------------------------------------
+  const [
+    user,
+    setUser,
+  ] = useState<
+    StoredUser | null
+  >(null);
+
+
+  // ==========================================================
   // USER ID
-  // ----------------------------------------------------------
+  // ==========================================================
 
   const userId =
     useMemo(
-      () => getUserId(user),
+      () =>
+        getUserId(user),
       [user]
     );
 
 
   // ==========================================================
-  // LOAD USER
+  // INITIAL USER LOAD
   // ==========================================================
 
   useEffect(() => {
 
-    const loggedInUser =
-      getLoggedInUser();
-
-    setUser(loggedInUser);
+    setUser(
+      getStoredUser()
+    );
 
   }, []);
 
@@ -397,34 +426,39 @@ function ReportsPage() {
     useCallback(
       async () => {
 
-        setLoading(true);
+        setLoading(
+          true
+        );
 
-        setError(null);
+        setError(
+          null
+        );
 
 
         try {
 
-          const loggedInUser =
-            getLoggedInUser();
-
+          const storedUser =
+            getStoredUser();
 
           setUser(
-            loggedInUser
+            storedUser
           );
 
 
           const id =
             getUserId(
-              loggedInUser
+              storedUser
             );
 
 
           if (!id) {
 
-            setReports([]);
+            setReports(
+              []
+            );
 
             setError(
-              "Unable to determine the logged-in user's ID."
+              "Unable to identify the logged-in user. Please login again."
             );
 
             return;
@@ -437,7 +471,8 @@ function ReportsPage() {
             >(
               `/api/reports/user/${id}`,
               {
-                method: "GET",
+                method:
+                  "GET",
               }
             );
 
@@ -464,7 +499,9 @@ function ReportsPage() {
 
         } finally {
 
-          setLoading(false);
+          setLoading(
+            false
+          );
         }
 
       },
@@ -474,7 +511,7 @@ function ReportsPage() {
 
   useEffect(() => {
 
-    loadReports();
+    void loadReports();
 
   }, [loadReports]);
 
@@ -483,254 +520,263 @@ function ReportsPage() {
   // GENERATE REPORT
   // ==========================================================
 
-  const generateReport =
-    async () => {
+  async function handleGenerateReport() {
 
-      setError(null);
+    setError(
+      null
+    );
 
-      setSuccess(null);
-
-
-      if (!userId) {
-
-        setError(
-          "Unable to determine the logged-in user's ID."
-        );
-
-        return;
-      }
+    setSuccess(
+      null
+    );
 
 
-      setGenerating(true);
+    const currentUser =
+      getStoredUser();
 
 
-      try {
-
-        /*
-         * IMPORTANT:
-         *
-         * Your backend now expects:
-         *
-         * @RequestBody ReportGenerateRequest
-         *
-         * Therefore we send JSON.
-         */
-
-        const requestBody = {
-
-          userId: userId,
-
-          reportName:
-            selectedTemplate.name,
-
-          reportType:
-            selectedTemplate.type,
-
-          format: format,
-        };
-
-
-        console.log(
-          "Generating report:",
-          requestBody
-        );
-
-
-        const createdReport =
-          await apiRequest<Report>(
-            "/api/reports/generate",
-            {
-              method: "POST",
-
-              body:
-                JSON.stringify(
-                  requestBody
-                ),
-            }
-          );
-
-
-        /*
-         * Add newly generated report
-         * immediately to UI.
-         */
-
-        if (createdReport) {
-
-          setReports(
-            (previous) => [
-              createdReport,
-              ...previous,
-            ]
-          );
-        }
-
-
-        setSuccess(
-          `${selectedTemplate.name} generated successfully.`
-        );
-
-
-        /*
-         * Refresh from database to make
-         * absolutely sure UI matches backend.
-         */
-
-        await loadReports();
-
-      } catch (err) {
-
-        console.error(
-          "Report generation failed:",
-          err
-        );
-
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to generate report."
-        );
-
-      } finally {
-
-        setGenerating(false);
-      }
-    };
-
-
-  // ==========================================================
-  // DOWNLOAD REPORT
-  // ==========================================================
-
-  const handleDownload =
-    async (
-      report: Report
-    ) => {
-
-      setError(null);
-
-      setSuccess(null);
-
-
-      if (!report.filePath) {
-
-        setError(
-          "This report does not have a generated file attached."
-        );
-
-        return;
-      }
-
-
-      setDownloadingId(
-        report.reportId
+    const currentUserId =
+      getUserId(
+        currentUser
       );
 
 
-      try {
+    if (!currentUserId) {
 
-        /*
-         * IMPORTANT:
-         *
-         * Do NOT use window.open().
-         *
-         * downloadFile() sends:
-         *
-         * Authorization:
-         * Bearer <JWT>
-         *
-         * so Spring Security allows
-         * the file request.
-         */
+      setError(
+        "Unable to identify the logged-in user. Please login again."
+      );
 
-        await downloadFile(
-          report.filePath
-        );
+      return;
+    }
 
 
-        setSuccess(
-          `${report.reportName} downloaded successfully.`
-        );
-
-      } catch (err) {
-
-        console.error(
-          "Report download failed:",
-          err
-        );
+    setGenerating(
+      true
+    );
 
 
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to download report."
-        );
+    try {
 
-      } finally {
+      const payload = {
 
-        setDownloadingId(
-          null
-        );
-      }
-    };
+        userId:
+          currentUserId,
+
+        reportName:
+          selectedTemplate.name,
+
+        reportType:
+          selectedTemplate.type,
+
+        format:
+          selectedFormat,
+      };
+
+
+      console.log(
+        "Generating StreamForge report:",
+        payload
+      );
+
+
+      await apiRequest<Report>(
+        "/api/reports/generate",
+        {
+          method:
+            "POST",
+
+          body:
+            JSON.stringify(
+              payload
+            ),
+        }
+      );
+
+
+      setSuccess(
+        `${selectedTemplate.name} generated successfully.`
+      );
+
+
+      /*
+       * Reload directly from database.
+       *
+       * This guarantees that the new
+       * filePath returned by backend is used.
+       */
+      await loadReports();
+
+    } catch (err) {
+
+      console.error(
+        "Report generation failed:",
+        err
+      );
+
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to generate report."
+      );
+
+    } finally {
+
+      setGenerating(
+        false
+      );
+    }
+  }
 
 
   // ==========================================================
-  // CLEAR MESSAGE
+  // DOWNLOAD
   // ==========================================================
 
-  const clearMessages =
-    () => {
+  async function handleDownload(
+    report: Report
+  ) {
 
-      setError(null);
+    setError(
+      null
+    );
 
-      setSuccess(null);
-    };
+    setSuccess(
+      null
+    );
+
+
+    if (
+      !report.filePath ||
+      !report.filePath.trim()
+    ) {
+
+      setError(
+        "This report does not have a generated file."
+      );
+
+      return;
+    }
+
+
+    setDownloadingId(
+      report.reportId
+    );
+
+
+    try {
+
+      await downloadFile(
+        report.filePath
+      );
+
+
+      setSuccess(
+        `${report.reportName} downloaded successfully.`
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Report download failed:",
+        err
+      );
+
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to download report."
+      );
+
+    } finally {
+
+      setDownloadingId(
+        null
+      );
+    }
+  }
 
 
   // ==========================================================
-  // ACCESS CHECK
+  // CLEAR MESSAGES
+  // ==========================================================
+
+  function clearMessages() {
+
+    setError(
+      null
+    );
+
+    setSuccess(
+      null
+    );
+  }
+
+
+  // ==========================================================
+  // ACCESS CONTROL
   // ==========================================================
 
   if (
-    !can("generate_reports")
+    !can(
+      "generate_reports"
+    )
   ) {
 
     return (
 
       <DashboardLayout>
 
-        <div className="min-h-[60vh] grid place-items-center">
+        <div className="
+          min-h-[60vh]
+          grid
+          place-items-center
+          p-6
+        ">
 
-          <Card className="max-w-md text-center py-12">
+          <Card className="
+            max-w-md
+            text-center
+            p-10
+          ">
 
-            <div className="mx-auto h-14 w-14 grid place-items-center rounded-2xl bg-destructive/15 text-destructive mb-5">
+            <div className="
+              mx-auto
+              h-14
+              w-14
+              rounded-2xl
+              bg-destructive/10
+              text-destructive
+              grid
+              place-items-center
+            ">
 
               <Lock className="h-7 w-7" />
 
             </div>
 
 
-            <h2 className="text-xl font-bold">
+            <h2 className="
+              mt-5
+              text-xl
+              font-bold
+            ">
 
               Reporting locked
 
             </h2>
 
 
-            <p className="text-sm text-muted-foreground mt-2">
+            <p className="
+              mt-2
+              text-sm
+              text-muted-foreground
+            ">
 
-              Report generation is available
-              to Directors, Producers,
-              Content Managers and Admins.
-
-              <br />
-
-              Current role:{" "}
-
-              {profile?.label ||
-                "Unknown"}
+              You do not have permission
+              to generate reports.
 
             </p>
 
@@ -744,18 +790,25 @@ function ReportsPage() {
 
 
   // ==========================================================
-  // UI
+  // PAGE UI
   // ==========================================================
 
   return (
 
     <DashboardLayout>
 
-      {/* =====================================================
+      {/* ======================================================
           HEADER
-      ====================================================== */}
+      ======================================================= */}
 
-      <div className="flex items-start justify-between gap-4">
+      <div className="
+        flex
+        flex-col
+        md:flex-row
+        md:items-start
+        md:justify-between
+        gap-4
+      ">
 
         <PageHeader
           title="Reports"
@@ -763,15 +816,24 @@ function ReportsPage() {
         />
 
 
-        <div className="flex items-center gap-2">
+        <div className="
+          flex
+          items-center
+          gap-2
+        ">
 
           <button
             type="button"
             onClick={() => {
+
               clearMessages();
-              loadReports();
+
+              void loadReports();
+
             }}
-            disabled={loading}
+            disabled={
+              loading
+            }
             className="
               h-10
               px-4
@@ -782,7 +844,6 @@ function ReportsPage() {
               font-medium
               inline-flex
               items-center
-              justify-center
               gap-2
               hover:bg-accent
               transition
@@ -805,7 +866,9 @@ function ReportsPage() {
 
           <button
             type="button"
-            onClick={generateReport}
+            onClick={
+              handleGenerateReport
+            }
             disabled={
               generating ||
               !userId
@@ -820,16 +883,27 @@ function ReportsPage() {
               font-semibold
               inline-flex
               items-center
-              justify-center
               gap-2
               hover:opacity-90
               transition
-              shadow-[var(--shadow-glow)]
               disabled:opacity-50
             "
           >
 
-            <Download className="h-4 w-4" />
+            {generating ? (
+
+              <RefreshCw className="
+                h-4 w-4
+                animate-spin
+              " />
+
+            ) : (
+
+              <Download className="
+                h-4 w-4
+              " />
+
+            )}
 
             {generating
               ? "Generating..."
@@ -842,14 +916,14 @@ function ReportsPage() {
       </div>
 
 
-      {/* =====================================================
+      {/* ======================================================
           ERROR
-      ====================================================== */}
+      ======================================================= */}
 
       {error && (
 
         <div className="
-          mt-4
+          mt-5
           rounded-xl
           border
           border-destructive/50
@@ -863,7 +937,11 @@ function ReportsPage() {
           text-destructive
         ">
 
-          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+          <AlertCircle className="
+            h-4 w-4
+            mt-0.5
+            shrink-0
+          " />
 
           <div className="flex-1">
 
@@ -877,10 +955,11 @@ function ReportsPage() {
             onClick={() =>
               setError(null)
             }
-            className="opacity-70 hover:opacity-100"
           >
 
-            <X className="h-4 w-4" />
+            <X className="
+              h-4 w-4
+            " />
 
           </button>
 
@@ -888,28 +967,32 @@ function ReportsPage() {
       )}
 
 
-      {/* =====================================================
+      {/* ======================================================
           SUCCESS
-      ====================================================== */}
+      ======================================================= */}
 
       {success && (
 
         <div className="
-          mt-4
+          mt-5
           rounded-xl
           border
-          border-green-500/40
-          bg-green-500/10
+          border-emerald-500/40
+          bg-emerald-500/10
           px-4
           py-3
           flex
           items-start
           gap-3
           text-sm
-          text-green-400
+          text-emerald-400
         ">
 
-          <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+          <CheckCircle2 className="
+            h-4 w-4
+            mt-0.5
+            shrink-0
+          " />
 
           <div className="flex-1">
 
@@ -923,10 +1006,11 @@ function ReportsPage() {
             onClick={() =>
               setSuccess(null)
             }
-            className="opacity-70 hover:opacity-100"
           >
 
-            <X className="h-4 w-4" />
+            <X className="
+              h-4 w-4
+            " />
 
           </button>
 
@@ -934,40 +1018,37 @@ function ReportsPage() {
       )}
 
 
-      {/* =====================================================
+      {/* ======================================================
           USER INFO
-      ====================================================== */}
+      ======================================================= */}
 
-      {user && userId && (
+      <Card className="
+        mt-5
+        p-5
+      ">
 
         <div className="
-          mt-4
-          rounded-xl
-          border
-          border-border
-          bg-surface
-          px-4
-          py-3
           flex
           items-center
           gap-3
         ">
 
           <div className="
-            h-9
-            w-9
+            h-10
+            w-10
             rounded-full
             bg-primary/15
             text-primary
             grid
             place-items-center
-            text-sm
             font-bold
           ">
 
-            {(user.fullName ||
-              user.username ||
-              "U")
+            {(
+              user?.fullName ||
+              user?.username ||
+              "U"
+            )
               .charAt(0)
               .toUpperCase()}
 
@@ -976,49 +1057,70 @@ function ReportsPage() {
 
           <div>
 
-            <div className="text-sm font-semibold">
+            <div className="
+              text-sm
+              font-semibold
+            ">
 
-              {user.fullName ||
-                user.username ||
-                "User"}
+              {user?.fullName ||
+                user?.username ||
+                "Logged-in user"}
 
             </div>
 
 
-            <div className="text-xs text-muted-foreground">
+            <div className="
+              text-xs
+              text-muted-foreground
+              mt-0.5
+            ">
 
-              @{user.username || "user"}
+              @{user?.username || "user"}
 
               {" • "}
 
-              User ID: {userId}
+              User ID:{" "}
+              {userId ?? "—"}
 
             </div>
 
           </div>
 
         </div>
-      )}
+
+      </Card>
 
 
-      {/* =====================================================
-          TEMPLATE SECTION
-      ====================================================== */}
+      {/* ======================================================
+          TEMPLATES
+      ======================================================= */}
 
-      <section className="mt-6">
+      <section className="
+        mt-6
+      ">
 
-        <div className="mb-3">
+        <div className="
+          mb-3
+        ">
 
-          <h2 className="text-sm font-semibold">
+          <h2 className="
+            text-sm
+            font-semibold
+          ">
 
             Report templates
 
           </h2>
 
 
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="
+            mt-1
+            text-xs
+            text-muted-foreground
+          ">
 
-            Choose the type of report you want to generate.
+            Choose the type of report
+            you want to generate.
 
           </p>
 
@@ -1027,17 +1129,16 @@ function ReportsPage() {
 
         <div className="
           grid
-          xl:grid-cols-4
           md:grid-cols-2
+          xl:grid-cols-4
           gap-4
         ">
 
-          {templates.map(
-            (template) => {
+          {REPORT_TEMPLATES.map(
+            template => {
 
               const Icon =
                 template.icon;
-
 
               const active =
                 selectedTemplate.id ===
@@ -1047,7 +1148,9 @@ function ReportsPage() {
               return (
 
                 <button
-                  key={template.id}
+                  key={
+                    template.id
+                  }
                   type="button"
                   onClick={() => {
 
@@ -1056,71 +1159,78 @@ function ReportsPage() {
                     );
 
                     clearMessages();
+
                   }}
                   className={cn(
                     `
-                    text-left
                     rounded-2xl
                     border
                     p-5
+                    text-left
                     transition
-                    card-hover
+                    hover:border-primary/50
+                    hover:bg-accent/30
                     `,
-                    active
-                      ? `
-                        border-primary
-                        bg-primary/5
+                    active &&
                       `
-                      : `
-                        border-border
-                        hover:border-primary/40
+                      border-primary
+                      bg-primary/5
                       `
                   )}
                 >
 
-                  <div className="flex items-start gap-3">
+                  <div className="
+                    flex
+                    items-start
+                    gap-3
+                  ">
 
-                    <span className="
+                    <div className="
                       h-10
                       w-10
-                      grid
-                      place-items-center
                       rounded-xl
                       bg-primary/10
                       text-primary
+                      grid
+                      place-items-center
                       shrink-0
                     ">
 
-                      <Icon className="h-5 w-5" />
+                      <Icon className="
+                        h-5 w-5
+                      " />
 
-                    </span>
+                    </div>
 
 
-                    <span className="min-w-0">
+                    <div className="
+                      min-w-0
+                    ">
 
-                      <span className="
-                        block
+                      <div className="
                         text-sm
                         font-semibold
                       ">
 
                         {template.name}
 
-                      </span>
+                      </div>
 
 
-                      <span className="
-                        block
+                      <div className="
+                        mt-1
                         text-xs
                         text-muted-foreground
-                        mt-1
+                        leading-5
                       ">
 
-                        {template.desc}
+                        {
+                          template.description
+                        }
 
-                      </span>
+                      </div>
 
-                    </span>
+                    </div>
 
                   </div>
 
@@ -1134,22 +1244,24 @@ function ReportsPage() {
       </section>
 
 
-      {/* =====================================================
+      {/* ======================================================
           SUMMARY
-      ====================================================== */}
+      ======================================================= */}
 
       <div className="
-        grid
-        lg:grid-cols-3
-        gap-4
         mt-6
+        grid
+        md:grid-cols-3
+        gap-4
       ">
 
         <SummaryCard
           label="Total reports"
-          value={String(
-            reports.length
-          )}
+          value={
+            String(
+              reports.length
+            )
+          }
         />
 
 
@@ -1162,426 +1274,740 @@ function ReportsPage() {
 
 
         <SummaryCard
-          label="Logged-in user"
+          label="Format"
           value={
-            user?.username ||
-            "Loading..."
+            selectedFormat
           }
         />
 
       </div>
 
 
-      {/* =====================================================
-          MAIN CONTENT
-      ====================================================== */}
+      {/* ======================================================
+          FORMAT
+      ======================================================= */}
 
-      <div className="mt-6">
-
-        <Card className="!p-0 overflow-hidden">
-
-          {/* HEADER */}
-
-          <div className="
-            p-5
-            border-b
-            border-border
-            flex
-            items-center
-            justify-between
-            gap-4
-          ">
-
-            <div>
-
-              <div className="text-sm font-semibold">
-
-                Generated reports
-
-              </div>
-
-
-              <div className="
-                text-xs
-                text-muted-foreground
-                mt-1
-              ">
-
-                Reports generated by your account.
-
-              </div>
-
-            </div>
-
-
-            <Chip variant="info">
-
-              {reports.length}{" "}
-
-              {reports.length === 1
-                ? "report"
-                : "reports"}
-
-            </Chip>
-
-          </div>
-
-
-          {/* BODY */}
-
-          {loading ? (
-
-            <div className="
-              min-h-[300px]
-              grid
-              place-items-center
-            ">
-
-              <div className="
-                flex
-                items-center
-                gap-3
-                text-sm
-                text-muted-foreground
-              ">
-
-                <RefreshCw className="
-                  h-5
-                  w-5
-                  animate-spin
-                " />
-
-                Loading reports...
-
-              </div>
-
-            </div>
-
-          ) : reports.length === 0 ? (
-
-            <EmptyReports
-              onGenerate={
-                generateReport
-              }
-              disabled={
-                generating ||
-                !userId
-              }
-            />
-
-          ) : (
-
-            <div className="divide-y divide-border">
-
-              {reports.map(
-                (report) => (
-
-                  <ReportRow
-                    key={
-                      report.reportId
-                    }
-                    report={report}
-                    downloading={
-                      downloadingId ===
-                      report.reportId
-                    }
-                    onView={() =>
-                      setSelectedReport(
-                        report
-                      )
-                    }
-                    onDownload={() =>
-                      handleDownload(
-                        report
-                      )
-                    }
-                  />
-
-                )
-              )}
-
-            </div>
-
-          )}
-
-        </Card>
-
-      </div>
-
-
-      {/* =====================================================
-          CONFIGURATION
-      ====================================================== */}
-
-      <div className="
+      <Card className="
         mt-6
-        grid
-        lg:grid-cols-[minmax(0,1fr)_360px]
-        gap-6
+        p-5
       ">
 
-        <Card>
+        <div className="
+          flex
+          flex-col
+          md:flex-row
+          md:items-center
+          md:justify-between
+          gap-4
+        ">
 
-          <div className="
-            text-sm
-            font-semibold
-            mb-4
-          ">
-
-            Selected report
-
-          </div>
-
-
-          <div className="
-            rounded-xl
-            border
-            border-border
-            p-5
-          ">
-
-            <div className="
-              text-xs
-              uppercase
-              tracking-wider
-              text-muted-foreground
-            ">
-
-              Template
-
-            </div>
-
-
-            <div className="
-              text-lg
-              font-bold
-              mt-1
-            ">
-
-              {selectedTemplate.name}
-
-            </div>
-
+          <div>
 
             <div className="
               text-sm
-              text-muted-foreground
-              mt-2
+              font-semibold
             ">
 
-              {selectedTemplate.desc}
+              Export format
 
             </div>
 
+
+            <div className="
+              mt-1
+              text-xs
+              text-muted-foreground
+            ">
+
+              Select PDF, CSV or Excel
+              for the generated report.
+
+            </div>
+
+          </div>
+
+
+          <div className="
+            flex
+            gap-2
+          ">
+
+            {(
+              [
+                "PDF",
+                "CSV",
+                "XLSX",
+              ] as ReportFormat[]
+            ).map(
+              item => (
+
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => {
+
+                    setSelectedFormat(
+                      item
+                    );
+
+                    clearMessages();
+
+                  }}
+                  className={cn(
+                    `
+                    h-10
+                    px-5
+                    rounded-xl
+                    border
+                    text-xs
+                    font-semibold
+                    transition
+                    `,
+                    selectedFormat ===
+                      item
+                      ? `
+                        border-primary
+                        bg-primary/10
+                        text-primary
+                        `
+                      : `
+                        border-border
+                        hover:bg-accent
+                        `
+                  )}
+                >
+
+                  {item === "XLSX"
+                    ? "Excel"
+                    : item}
+
+                </button>
+
+              )
+            )}
+
+          </div>
+
+        </div>
+
+      </Card>
+
+
+      {/* ======================================================
+          GENERATED REPORTS
+      ======================================================= */}
+
+      <Card className="
+        mt-6
+        p-0
+        overflow-hidden
+      ">
+
+        <div className="
+          p-5
+          border-b
+          border-border
+          flex
+          items-center
+          justify-between
+          gap-3
+        ">
+
+          <div>
+
+            <div className="
+              text-sm
+              font-semibold
+            ">
+
+              Generated reports
+
+            </div>
+
+
+            <div className="
+              mt-1
+              text-xs
+              text-muted-foreground
+            ">
+
+              Reports generated by
+              your account.
+
+            </div>
+
+          </div>
+
+
+          <div className="
+            rounded-full
+            bg-primary/10
+            text-primary
+            px-3
+            py-1
+            text-xs
+            font-semibold
+          ">
+
+            {reports.length}{" "}
+            {reports.length === 1
+              ? "report"
+              : "reports"}
+
+          </div>
+
+        </div>
+
+
+        {loading ? (
+
+          <div className="
+            min-h-[280px]
+            grid
+            place-items-center
+          ">
 
             <div className="
               flex
               items-center
               gap-2
-              mt-4
-            ">
-
-              <Chip variant="info">
-
-                {selectedTemplate.type}
-
-              </Chip>
-
-
-              <Chip variant="default">
-
-                {format}
-
-              </Chip>
-
-            </div>
-
-          </div>
-
-        </Card>
-
-
-        <Card className="h-fit">
-
-          <div className="
-            text-sm
-            font-semibold
-            mb-5
-          ">
-
-            Report configuration
-
-          </div>
-
-
-          {/* FORMAT */}
-
-          <div>
-
-            <div className="
-              mb-2
-              text-xs
-              font-medium
-              uppercase
-              tracking-wider
+              text-sm
               text-muted-foreground
             ">
 
-              Format
+              <RefreshCw className="
+                h-5 w-5
+                animate-spin
+              " />
 
-            </div>
-
-
-            <div className="
-              grid
-              grid-cols-3
-              gap-2
-            ">
-
-              {(
-                [
-                  "PDF",
-                  "CSV",
-                  "XLSX",
-                ] as ReportFormat[]
-              ).map(
-                (item) => (
-
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => {
-
-                      setFormat(
-                        item
-                      );
-
-                      clearMessages();
-                    }}
-                    className={cn(
-                      `
-                      h-10
-                      rounded-xl
-                      border
-                      text-xs
-                      font-medium
-                      transition
-                      `,
-                      format === item
-                        ? `
-                          border-primary
-                          bg-primary/10
-                          text-primary
-                        `
-                        : `
-                          border-border
-                          hover:bg-accent
-                        `
-                    )}
-                  >
-
-                    {item}
-
-                  </button>
-
-                )
-              )}
+              Loading reports...
 
             </div>
 
           </div>
 
+        ) : reports.length === 0 ? (
 
-          {/* GENERATE */}
+          <div className="
+            min-h-[280px]
+            grid
+            place-items-center
+            text-center
+            p-8
+          ">
 
-          <button
-            type="button"
-            onClick={
-              generateReport
-            }
-            disabled={
-              generating ||
-              !userId
-            }
-            className="
-              mt-5
-              w-full
-              h-11
-              rounded-xl
-              bg-primary
-              text-primary-foreground
-              text-sm
-              font-semibold
-              inline-flex
-              items-center
-              justify-center
-              gap-2
-              hover:opacity-90
-              transition
-              shadow-[var(--shadow-glow)]
-              disabled:opacity-50
-            "
-          >
+            <div>
 
-            {generating ? (
+              <div className="
+                mx-auto
+                h-14
+                w-14
+                rounded-2xl
+                bg-primary/10
+                text-primary
+                grid
+                place-items-center
+              ">
 
-              <>
-
-                <RefreshCw className="
-                  h-4
-                  w-4
-                  animate-spin
+                <BarChart3 className="
+                  h-7 w-7
                 " />
 
-                Generating...
+              </div>
 
-              </>
 
-            ) : (
+              <div className="
+                mt-4
+                text-base
+                font-semibold
+              ">
 
-              <>
+                No reports generated yet
 
-                <Download className="h-4 w-4" />
+              </div>
 
-                Generate Report
 
-              </>
+              <p className="
+                mt-1
+                text-sm
+                text-muted-foreground
+              ">
 
+                Choose a template and
+                click Generate Report.
+
+              </p>
+
+            </div>
+
+          </div>
+
+        ) : (
+
+          <div className="
+            divide-y
+            divide-border
+          ">
+
+            {reports.map(
+              report => {
+
+                const format =
+                  getFormat(
+                    report
+                  );
+
+                const hasFile =
+                  Boolean(
+                    report.filePath
+                  );
+
+                const downloading =
+                  downloadingId ===
+                  report.reportId;
+
+
+                return (
+
+                  <div
+                    key={
+                      report.reportId
+                    }
+                    className="
+                      p-5
+                      flex
+                      flex-col
+                      lg:flex-row
+                      lg:items-center
+                      lg:justify-between
+                      gap-4
+                      hover:bg-accent/20
+                      transition
+                    "
+                  >
+
+                    <div className="
+                      flex
+                      items-center
+                      gap-4
+                      min-w-0
+                    ">
+
+                      <div className="
+                        h-11
+                        w-11
+                        rounded-xl
+                        bg-primary/10
+                        text-primary
+                        grid
+                        place-items-center
+                        shrink-0
+                      ">
+
+                        <FileText className="
+                          h-5 w-5
+                        " />
+
+                      </div>
+
+
+                      <div className="
+                        min-w-0
+                      ">
+
+                        <div className="
+                          text-sm
+                          font-semibold
+                          truncate
+                        ">
+
+                          {
+                            report.reportName
+                          }
+
+                        </div>
+
+
+                        <div className="
+                          mt-1
+                          flex
+                          flex-wrap
+                          items-center
+                          gap-2
+                        ">
+
+                          <span className="
+                            rounded-full
+                            bg-muted
+                            px-2.5
+                            py-1
+                            text-[10px]
+                            font-medium
+                          ">
+
+                            {
+                              report.reportType
+                            }
+
+                          </span>
+
+
+                          <span className="
+                            rounded-full
+                            bg-primary/10
+                            text-primary
+                            px-2.5
+                            py-1
+                            text-[10px]
+                            font-medium
+                          ">
+
+                            {format}
+
+                          </span>
+
+
+                          <span className="
+                            text-[11px]
+                            text-muted-foreground
+                          ">
+
+                            Report #
+                            {
+                              report.reportId
+                            }
+
+                          </span>
+
+                        </div>
+
+                      </div>
+
+                    </div>
+
+
+                    <div className="
+                      flex
+                      items-center
+                      gap-2
+                      shrink-0
+                    ">
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedReport(
+                            report
+                          )
+                        }
+                        className="
+                          h-9
+                          px-3
+                          rounded-xl
+                          border
+                          border-border
+                          text-xs
+                          font-medium
+                          inline-flex
+                          items-center
+                          gap-2
+                          hover:bg-accent
+                          transition
+                        "
+                      >
+
+                        <Eye className="
+                          h-4 w-4
+                        " />
+
+                        View
+
+                      </button>
+
+
+                      <button
+                        type="button"
+                        disabled={
+                          downloading ||
+                          !hasFile
+                        }
+                        onClick={() =>
+                          void handleDownload(
+                            report
+                          )
+                        }
+                        className="
+                          h-9
+                          px-4
+                          rounded-xl
+                          bg-primary
+                          text-primary-foreground
+                          text-xs
+                          font-semibold
+                          inline-flex
+                          items-center
+                          gap-2
+                          hover:opacity-90
+                          transition
+                          disabled:opacity-50
+                        "
+                      >
+
+                        {downloading ? (
+
+                          <RefreshCw className="
+                            h-4 w-4
+                            animate-spin
+                          " />
+
+                        ) : (
+
+                          <Download className="
+                            h-4 w-4
+                          " />
+
+                        )}
+
+                        {downloading
+                          ? "Downloading..."
+                          : hasFile
+                            ? "Download"
+                            : "No File"}
+
+                      </button>
+
+                    </div>
+
+                  </div>
+                );
+              }
             )}
 
-          </button>
+          </div>
+        )}
 
-        </Card>
-
-      </div>
+      </Card>
 
 
-      {/* =====================================================
-          REPORT DETAILS MODAL
-      ====================================================== */}
+      {/* ======================================================
+          REPORT MODAL
+      ======================================================= */}
 
       {selectedReport && (
 
-        <ReportDetailsModal
-          report={
-            selectedReport
-          }
-          onClose={() =>
-            setSelectedReport(
-              null
-            )
-          }
-          onDownload={() =>
-            handleDownload(
-              selectedReport
-            )
-          }
-          downloading={
-            downloadingId ===
-            selectedReport.reportId
-          }
-        />
+        <div className="
+          fixed
+          inset-0
+          z-50
+          bg-black/70
+          backdrop-blur-sm
+          flex
+          items-center
+          justify-center
+          p-4
+        ">
 
+          <div className="
+            w-full
+            max-w-xl
+            rounded-2xl
+            border
+            border-border
+            bg-background
+            shadow-2xl
+            overflow-hidden
+          ">
+
+            <div className="
+              p-5
+              border-b
+              border-border
+              flex
+              items-center
+              justify-between
+            ">
+
+              <div>
+
+                <h2 className="
+                  text-lg
+                  font-bold
+                ">
+
+                  Report Details
+
+                </h2>
+
+
+                <p className="
+                  mt-1
+                  text-xs
+                  text-muted-foreground
+                ">
+
+                  Report #
+                  {
+                    selectedReport.reportId
+                  }
+
+                </p>
+
+              </div>
+
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedReport(
+                    null
+                  )
+                }
+                className="
+                  h-9
+                  w-9
+                  rounded-xl
+                  grid
+                  place-items-center
+                  hover:bg-accent
+                "
+              >
+
+                <X className="
+                  h-5 w-5
+                " />
+
+              </button>
+
+            </div>
+
+
+            <div className="
+              p-5
+              space-y-3
+            ">
+
+              <DetailRow
+                label="Report Name"
+                value={
+                  selectedReport.reportName
+                }
+              />
+
+
+              <DetailRow
+                label="Report Type"
+                value={
+                  selectedReport.reportType
+                }
+              />
+
+
+              <DetailRow
+                label="Format"
+                value={
+                  getFormat(
+                    selectedReport
+                  )
+                }
+              />
+
+
+              <DetailRow
+                label="Generated File"
+                value={
+                  selectedReport.filePath ||
+                  "No file available"
+                }
+              />
+
+            </div>
+
+
+            <div className="
+              p-5
+              border-t
+              border-border
+              flex
+              justify-end
+              gap-2
+            ">
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedReport(
+                    null
+                  )
+                }
+                className="
+                  h-10
+                  px-4
+                  rounded-xl
+                  border
+                  border-border
+                  text-sm
+                  font-medium
+                  hover:bg-accent
+                "
+              >
+
+                Close
+
+              </button>
+
+
+              <button
+                type="button"
+                disabled={
+                  !selectedReport.filePath ||
+                  downloadingId ===
+                    selectedReport.reportId
+                }
+                onClick={() =>
+                  void handleDownload(
+                    selectedReport
+                  )
+                }
+                className="
+                  h-10
+                  px-4
+                  rounded-xl
+                  bg-primary
+                  text-primary-foreground
+                  text-sm
+                  font-semibold
+                  inline-flex
+                  items-center
+                  gap-2
+                  disabled:opacity-50
+                "
+              >
+
+                {downloadingId ===
+                selectedReport.reportId ? (
+
+                  <RefreshCw className="
+                    h-4 w-4
+                    animate-spin
+                  " />
+
+                ) : (
+
+                  <Download className="
+                    h-4 w-4
+                  " />
+
+                )}
+
+                Download
+
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
       )}
 
     </DashboardLayout>
@@ -1627,6 +2053,7 @@ function SummaryCard({
         mt-2
         text-lg
         font-bold
+        truncate
       ">
 
         {value}
@@ -1639,552 +2066,10 @@ function SummaryCard({
 
 
 // ============================================================
-// EMPTY REPORTS
+// DETAIL ROW
 // ============================================================
 
-function EmptyReports({
-  onGenerate,
-  disabled,
-}: {
-  onGenerate: () => void;
-  disabled: boolean;
-}) {
-
-  return (
-
-    <div className="
-      min-h-[330px]
-      grid
-      place-items-center
-      text-center
-      p-8
-    ">
-
-      <div>
-
-        <div className="
-          mx-auto
-          h-14
-          w-14
-          rounded-2xl
-          bg-primary/10
-          text-primary
-          grid
-          place-items-center
-        ">
-
-          <FileText className="h-7 w-7" />
-
-        </div>
-
-
-        <h3 className="
-          text-base
-          font-semibold
-          mt-4
-        ">
-
-          No reports yet
-
-        </h3>
-
-
-        <p className="
-          text-sm
-          text-muted-foreground
-          mt-1
-        ">
-
-          Select a template and
-          generate your first report.
-
-        </p>
-
-
-        <button
-          type="button"
-          onClick={
-            onGenerate
-          }
-          disabled={disabled}
-          className="
-            mt-5
-            h-10
-            px-5
-            rounded-xl
-            bg-primary
-            text-primary-foreground
-            text-sm
-            font-semibold
-            inline-flex
-            items-center
-            gap-2
-            hover:opacity-90
-            transition
-            disabled:opacity-50
-          "
-        >
-
-          <Download className="h-4 w-4" />
-
-          Generate your first report
-
-        </button>
-
-      </div>
-
-    </div>
-  );
-}
-
-
-// ============================================================
-// REPORT ROW
-// ============================================================
-
-function ReportRow({
-  report,
-  downloading,
-  onView,
-  onDownload,
-}: {
-  report: Report;
-  downloading: boolean;
-  onView: () => void;
-  onDownload: () => void;
-}) {
-
-  const reportFormat =
-    getReportFormat(
-      report
-    );
-
-
-  return (
-
-    <div className="
-      p-5
-      flex
-      items-center
-      justify-between
-      gap-4
-      hover:bg-accent/30
-      transition
-    ">
-
-      <div className="
-        flex
-        items-center
-        gap-4
-        min-w-0
-      ">
-
-        <div className="
-          h-11
-          w-11
-          rounded-xl
-          bg-primary/10
-          text-primary
-          grid
-          place-items-center
-          shrink-0
-        ">
-
-          <FileText className="h-5 w-5" />
-
-        </div>
-
-
-        <div className="min-w-0">
-
-          <div className="
-            text-sm
-            font-semibold
-            truncate
-          ">
-
-            {report.reportName}
-
-          </div>
-
-
-          <div className="
-            flex
-            items-center
-            gap-2
-            mt-1
-            flex-wrap
-          ">
-
-            <Chip variant="default">
-
-              {report.reportType}
-
-            </Chip>
-
-
-            <Chip variant="info">
-
-              {reportFormat}
-
-            </Chip>
-
-
-            <span className="
-              text-xs
-              text-muted-foreground
-            ">
-
-              Report #{report.reportId}
-
-            </span>
-
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <div className="
-        flex
-        items-center
-        gap-2
-        shrink-0
-      ">
-
-        <button
-          type="button"
-          onClick={
-            onView
-          }
-          className="
-            h-9
-            px-3
-            rounded-xl
-            border
-            border-border
-            text-xs
-            font-medium
-            inline-flex
-            items-center
-            gap-2
-            hover:bg-accent
-            transition
-          "
-        >
-
-          <Eye className="h-4 w-4" />
-
-          View
-
-        </button>
-
-
-        <button
-          type="button"
-          onClick={
-            onDownload
-          }
-          disabled={
-            downloading ||
-            !report.filePath
-          }
-          className="
-            h-9
-            px-3
-            rounded-xl
-            bg-primary
-            text-primary-foreground
-            text-xs
-            font-semibold
-            inline-flex
-            items-center
-            gap-2
-            hover:opacity-90
-            transition
-            disabled:opacity-50
-          "
-        >
-
-          {downloading ? (
-
-            <RefreshCw className="
-              h-4
-              w-4
-              animate-spin
-            " />
-
-          ) : (
-
-            <Download className="h-4 w-4" />
-
-          )}
-
-          {downloading
-            ? "Downloading..."
-            : "Download"}
-
-        </button>
-
-      </div>
-
-    </div>
-  );
-}
-
-
-// ============================================================
-// REPORT DETAILS MODAL
-// ============================================================
-
-function ReportDetailsModal({
-  report,
-  onClose,
-  onDownload,
-  downloading,
-}: {
-  report: Report;
-  onClose: () => void;
-  onDownload: () => void;
-  downloading: boolean;
-}) {
-
-  const format =
-    getReportFormat(
-      report
-    );
-
-
-  return (
-
-    <div className="
-      fixed
-      inset-0
-      z-50
-      bg-black/70
-      backdrop-blur-sm
-      flex
-      items-center
-      justify-center
-      p-4
-    ">
-
-      <div className="
-        w-full
-        max-w-xl
-        rounded-2xl
-        border
-        border-border
-        bg-background
-        shadow-2xl
-        overflow-hidden
-      ">
-
-        {/* HEADER */}
-
-        <div className="
-          px-6
-          py-5
-          border-b
-          border-border
-          flex
-          items-center
-          justify-between
-        ">
-
-          <div>
-
-            <h2 className="
-              text-lg
-              font-bold
-            ">
-
-              Report Details
-
-            </h2>
-
-
-            <p className="
-              text-xs
-              text-muted-foreground
-              mt-1
-            ">
-
-              Report #{report.reportId}
-
-            </p>
-
-          </div>
-
-
-          <button
-            type="button"
-            onClick={
-              onClose
-            }
-            className="
-              h-9
-              w-9
-              rounded-xl
-              grid
-              place-items-center
-              hover:bg-accent
-            "
-          >
-
-            <X className="h-5 w-5" />
-
-          </button>
-
-        </div>
-
-
-        {/* BODY */}
-
-        <div className="
-          p-6
-          space-y-4
-        ">
-
-          <DetailField
-            label="Report name"
-            value={
-              report.reportName
-            }
-          />
-
-
-          <DetailField
-            label="Report type"
-            value={
-              report.reportType
-            }
-          />
-
-
-          <DetailField
-            label="Report ID"
-            value={
-              String(
-                report.reportId
-              )
-            }
-          />
-
-
-          <DetailField
-            label="Format"
-            value={
-              format
-            }
-          />
-
-
-          <DetailField
-            label="File path"
-            value={
-              report.filePath ||
-              "No file attached"
-            }
-          />
-
-        </div>
-
-
-        {/* FOOTER */}
-
-        <div className="
-          px-6
-          py-4
-          border-t
-          border-border
-          flex
-          justify-end
-          gap-2
-        ">
-
-          <button
-            type="button"
-            onClick={
-              onClose
-            }
-            className="
-              h-10
-              px-4
-              rounded-xl
-              border
-              border-border
-              text-sm
-              font-medium
-              hover:bg-accent
-            "
-          >
-
-            Close
-
-          </button>
-
-
-          <button
-            type="button"
-            onClick={
-              onDownload
-            }
-            disabled={
-              downloading ||
-              !report.filePath
-            }
-            className="
-              h-10
-              px-4
-              rounded-xl
-              bg-primary
-              text-primary-foreground
-              text-sm
-              font-semibold
-              inline-flex
-              items-center
-              gap-2
-              hover:opacity-90
-              disabled:opacity-50
-            "
-          >
-
-            {downloading ? (
-
-              <RefreshCw className="
-                h-4
-                w-4
-                animate-spin
-              " />
-
-            ) : (
-
-              <Download className="h-4 w-4" />
-
-            )}
-
-            {downloading
-              ? "Downloading..."
-              : "Download"}
-
-          </button>
-
-        </div>
-
-      </div>
-
-    </div>
-  );
-}
-
-
-// ============================================================
-// DETAIL FIELD
-// ============================================================
-
-function DetailField({
+function DetailRow({
   label,
   value,
 }: {
@@ -2214,9 +2099,9 @@ function DetailField({
 
 
       <div className="
+        mt-1
         text-sm
         font-semibold
-        mt-1
         break-all
       ">
 

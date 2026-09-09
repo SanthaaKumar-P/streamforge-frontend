@@ -21,17 +21,25 @@ export interface ShowCreator {
   } | null;
 }
 
+export interface GenreResponse {
+  genreId: number;
+  genreName: string;
+  description?: string;
+}
+
 export interface ShowResponse {
   showId: number;
   title: string;
-  description?: string | null;
-  synopsis?: string | null;
-  language?: string | null;
-  targetAudience?: string | null;
-  estimatedBudget?: number | null;
-  expectedReleaseDate?: string | null;
-  status?: ShowStatus | string | null;
-  creator?: ShowCreator | null;
+  description?: string;
+  synopsis?: string;
+  language?: string;
+  targetAudience?: string;
+  episodeCount?: number;
+  estimatedBudget?: number;
+  expectedReleaseDate?: string;
+  status?: string;
+  creator?: unknown;
+  genres?: GenreResponse[];
 }
 
 export interface ShowRequest {
@@ -39,13 +47,14 @@ export interface ShowRequest {
   description?: string;
   synopsis?: string;
   language?: string;
-  targetAudience?: string;
+  targetAudience: string;
+  episodeCount: number;
+  genreIds: number[];
   estimatedBudget?: number;
   expectedReleaseDate?: string;
-  status?: ShowStatus;
+  status?: string;
   creatorId: number;
 }
-
 export async function getAllShows(): Promise<ShowResponse[]> {
   return apiRequest<ShowResponse[]>("/api/shows");
 }

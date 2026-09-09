@@ -1,83 +1,1354 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
-export type Role = "GUEST" | "VIEWER" | "CREATOR" | "DIRECTOR" | "PRODUCER" | "CONTENT_MANAGER" | "ADMIN";
+import {
+  getStoredUser,
+  getStoredRole,
+  getToken,
+} from "@/lib/auth";
 
-export const ROLES: { id: Role; label: string; blurb: string; person: string; avatar: string }[] = [
-  { id: "GUEST", label: "Guest", blurb: "Public browsing only", person: "Unauthenticated", avatar: "https://i.pravatar.cc/64?img=68" },
-  { id: "VIEWER", label: "Viewer", blurb: "Reads own content", person: "Mia Torres", avatar: "https://i.pravatar.cc/64?img=45" },
-  { id: "CREATOR", label: "Creator", blurb: "Submits pitches", person: "Sana Kapoor", avatar: "https://i.pravatar.cc/64?img=32" },
-  { id: "DIRECTOR", label: "Director", blurb: "Runs own productions", person: "Elias Ward", avatar: "https://i.pravatar.cc/64?img=12" },
-  { id: "PRODUCER", label: "Producer", blurb: "Owns budgets & crews", person: "Marco Herrera", avatar: "https://i.pravatar.cc/64?img=15" },
-  { id: "CONTENT_MANAGER", label: "Content Manager", blurb: "Evaluates & approves", person: "Ava Chen", avatar: "https://i.pravatar.cc/64?img=47" },
-  { id: "ADMIN", label: "Administrator", blurb: "Full system control", person: "Ren Ito", avatar: "https://i.pravatar.cc/64?img=13" },
-];
+/* =========================================================
+   ROLES
+========================================================= */
+
+export type Role =
+  | "GUEST"
+  | "VIEWER"
+  | "CREATOR"
+  | "DIRECTOR"
+  | "PRODUCER"
+  | "CONTENT_MANAGER"
+  | "ADMIN";
+
+
+/* =========================================================
+   PERMISSIONS
+========================================================= */
 
 export type Permission =
-  | "view_platform" | "submit_show" | "view_own_content" | "search_shows" | "view_production_status"
-  | "update_personal_info" | "manage_productions" | "evaluate_content" | "approve_shows" | "manage_budgets"
-  | "view_all_content" | "generate_reports" | "manage_users" | "system_config" | "audit_logs" | "analytics";
+  | "view_platform"
+  | "submit_show"
+  | "view_own_content"
+  | "search_shows"
+  | "view_production_status"
+  | "update_personal_info"
+  | "manage_productions"
+  | "evaluate_content"
+  | "approve_shows"
+  | "manage_budgets"
+  | "view_all_content"
+  | "generate_reports"
+  | "manage_users"
+  | "system_configuration"
+  | "analytics"
+  | "audit_logs";
 
-type Grant = true | false | "own" | "limited";
 
-export const PERMISSION_MATRIX: { key: Permission; label: string; grants: Record<Role, Grant> }[] = [
-  row("view_platform", "View Platform Info", [true, true, true, true, true, true, true]),
-  row("submit_show", "Submit Show", [false, false, true, true, false, false, false]),
-  row("view_own_content", "View Own Content", [false, true, true, true, false, false, false]),
-  row("search_shows", "Search Shows", [true, true, true, true, true, true, true]),
-  row("view_production_status", "View Production Status", [false, false, true, true, true, false, false]),
-  row("update_personal_info", "Update Personal Info", [false, true, true, true, true, true, true]),
-  row("manage_productions", "Manage Productions", [false, false, false, "own", true, false, false]),
-  row("evaluate_content", "Evaluate Content", [false, false, false, false, false, true, true]),
-  row("approve_shows", "Approve Shows", [false, false, false, false, false, true, true]),
-  row("manage_budgets", "Manage Budgets", [false, false, false, false, true, true, true]),
-  row("view_all_content", "View All Content", [false, false, false, false, true, true, true]),
-  row("generate_reports", "Generate Reports", [false, false, false, "limited", true, true, true]),
-  row("manage_users", "Manage Users", [false, false, false, false, false, false, true]),
-  row("system_config", "System Configuration", [false, false, false, false, false, false, true]),
-  row("audit_logs", "Audit Logs", [false, false, false, false, false, false, true]),
-  row("analytics", "Analytics Dashboard", [false, false, "own", "own", true, true, true]),
-];
+/* =========================================================
+   ROLE LABELS
+========================================================= */
 
-function row(key: Permission, label: string, values: Grant[]) {
-  const order: Role[] = ["GUEST", "VIEWER", "CREATOR", "DIRECTOR", "PRODUCER", "CONTENT_MANAGER", "ADMIN"];
-  const grants = {} as Record<Role, Grant>;
-  order.forEach((r, i) => (grants[r] = values[i]));
-  return { key, label, grants };
+export const ROLE_LABELS: Record<
+  Role,
+  string
+> = {
+
+  GUEST:
+    "Guest",
+
+  VIEWER:
+    "Viewer",
+
+  CREATOR:
+    "Creator",
+
+  DIRECTOR:
+    "Director",
+
+  PRODUCER:
+    "Producer",
+
+  CONTENT_MANAGER:
+    "Content Manager",
+
+  ADMIN:
+    "Administrator",
+};
+
+
+/* =========================================================
+   ROLE DESCRIPTIONS
+========================================================= */
+
+export const ROLE_DESCRIPTIONS: Record<
+  Role,
+  string
+> = {
+
+  GUEST:
+    "Public browsing only",
+
+  VIEWER:
+    "Reads approved content",
+
+  CREATOR:
+    "Submits pitches and manages own content",
+
+  DIRECTOR:
+    "Manages creative direction and own productions",
+
+  PRODUCER:
+    "Manages production, budgets and crews",
+
+  CONTENT_MANAGER:
+    "Evaluates, approves and oversees content",
+
+  ADMIN:
+    "Full system control",
+};
+
+
+/* =========================================================
+   ROLE PERMISSION MATRIX
+   =========================================================
+
+   This mirrors the SRS permission matrix.
+
+   Guest:
+     View platform
+     Search shows
+
+   Viewer:
+     View platform
+     View own content
+     Search shows
+     Update personal info
+
+   Creator:
+     View platform
+     Submit show
+     View own content
+     Search shows
+     View production status
+     Update personal info
+
+   Director:
+     View platform
+     Submit show
+     View own content
+     Search shows
+     View production status
+     Update personal info
+     Manage productions
+     Generate reports
+
+   Producer:
+     View platform
+     Search shows
+     View production status
+     Update personal info
+     Manage productions
+     Manage budgets
+     View all content
+     Generate reports
+
+   Content Manager:
+     View platform
+     Search shows
+     View production status
+     Update personal info
+     Evaluate content
+     Approve shows
+     Manage budgets
+     View all content
+     Generate reports
+
+   Admin:
+     Everything
+========================================================= */
+
+export const ROLE_PERMISSIONS: Record<
+  Role,
+  readonly Permission[]
+> = {
+
+  GUEST: [
+
+    "view_platform",
+
+    "search_shows",
+
+  ],
+
+  VIEWER: [
+
+    "view_platform",
+
+    "view_own_content",
+
+    "search_shows",
+
+    "update_personal_info",
+
+  ],
+
+  CREATOR: [
+
+    "view_platform",
+
+    "submit_show",
+
+    "view_own_content",
+
+    "search_shows",
+
+    "view_production_status",
+
+    "update_personal_info",
+
+  ],
+
+  DIRECTOR: [
+
+    "view_platform",
+
+    "submit_show",
+
+    "view_own_content",
+
+    "search_shows",
+
+    "view_production_status",
+
+    "update_personal_info",
+
+    "manage_productions",
+
+    "generate_reports",
+
+  ],
+
+  PRODUCER: [
+
+    "view_platform",
+
+    "search_shows",
+
+    "view_production_status",
+
+    "update_personal_info",
+
+    "manage_productions",
+
+    "manage_budgets",
+
+    "view_all_content",
+
+    "generate_reports",
+
+  ],
+
+  CONTENT_MANAGER: [
+
+    "view_platform",
+
+    "search_shows",
+
+    "view_production_status",
+
+    "update_personal_info",
+
+    "evaluate_content",
+
+    "approve_shows",
+
+    "manage_budgets",
+
+    "view_all_content",
+
+    "generate_reports",
+
+  ],
+
+  ADMIN: [
+
+    "view_platform",
+
+    "submit_show",
+
+    "view_own_content",
+
+    "search_shows",
+
+    "view_production_status",
+
+    "update_personal_info",
+
+    "manage_productions",
+
+    "evaluate_content",
+
+    "approve_shows",
+
+    "manage_budgets",
+
+    "view_all_content",
+
+    "generate_reports",
+
+    "manage_users",
+
+    "system_configuration",
+
+    "analytics",
+
+    "audit_logs",
+
+  ],
+
+};
+
+
+/* =========================================================
+   NORMALIZE ROLE
+========================================================= */
+
+export function normalizeRole(
+  value: unknown
+): Role {
+
+  if (
+    typeof value !== "string"
+  ) {
+
+    return "GUEST";
+  }
+
+
+  const normalized =
+    value
+      .trim()
+      .toUpperCase()
+      .replace(
+        /^ROLE_/,
+        ""
+      )
+      .replace(
+        /[\s-]+/g,
+        "_"
+      );
+
+
+  switch (
+    normalized
+  ) {
+
+    case "ADMIN":
+
+    case "ADMINISTRATOR":
+
+      return "ADMIN";
+
+
+    case "CREATOR":
+
+      return "CREATOR";
+
+
+    case "DIRECTOR":
+
+      return "DIRECTOR";
+
+
+    case "PRODUCER":
+
+      return "PRODUCER";
+
+
+    case "CONTENT_MANAGER":
+
+    case "CONTENTMANAGER":
+
+    case "CONTENT_MANAGER_ROLE":
+
+      return "CONTENT_MANAGER";
+
+
+    case "VIEWER":
+
+      return "VIEWER";
+
+
+    case "GUEST":
+
+      return "GUEST";
+
+
+    default:
+
+      return "GUEST";
+  }
 }
 
-export function grantFor(role: Role, permission: Permission): Grant {
-  return PERMISSION_MATRIX.find((r) => r.key === permission)?.grants[role] ?? false;
+
+/* =========================================================
+   EXTRACT ROLE
+========================================================= */
+
+export function extractRole(
+  value: unknown
+): Role | null {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
+
+    return null;
+  }
+
+
+  /* -------------------------------------------------------
+     Direct string
+  ------------------------------------------------------- */
+
+  if (
+    typeof value === "string"
+  ) {
+
+    const normalized =
+      normalizeRole(
+        value
+      );
+
+    /*
+     * Don't treat arbitrary strings as GUEST.
+     * Return null so caller can continue looking.
+     */
+
+    const validRoles: string[] = [
+
+      "GUEST",
+
+      "VIEWER",
+
+      "CREATOR",
+
+      "DIRECTOR",
+
+      "PRODUCER",
+
+      "CONTENT_MANAGER",
+
+      "ADMIN",
+
+      "ADMINISTRATOR",
+
+    ];
+
+
+    const cleaned =
+      value
+        .trim()
+        .toUpperCase()
+        .replace(
+          /^ROLE_/,
+          ""
+        )
+        .replace(
+          /[\s-]+/g,
+          "_"
+        );
+
+
+    if (
+      validRoles.includes(
+        cleaned
+      )
+    ) {
+
+      return normalized;
+    }
+
+
+    return null;
+  }
+
+
+  /* -------------------------------------------------------
+     Array
+  ------------------------------------------------------- */
+
+  if (
+    Array.isArray(value)
+  ) {
+
+    for (
+      const item of value
+    ) {
+
+      const role =
+        extractRole(
+          item
+        );
+
+
+      if (role) {
+
+        return role;
+      }
+    }
+
+
+    return null;
+  }
+
+
+  /* -------------------------------------------------------
+     Object
+  ------------------------------------------------------- */
+
+  if (
+    typeof value ===
+    "object"
+  ) {
+
+    const object =
+      value as Record<
+        string,
+        unknown
+      >;
+
+
+    /*
+     * Direct role fields
+     */
+
+    const directCandidates = [
+
+      object.role,
+
+      object.roleName,
+
+      object.authority,
+
+      object.name,
+
+    ];
+
+
+    for (
+      const candidate
+      of directCandidates
+    ) {
+
+      const role =
+        extractRole(
+          candidate
+        );
+
+
+      if (role) {
+
+        return role;
+      }
+    }
+
+
+    /*
+     * Nested role fields
+     */
+
+    const nestedCandidates = [
+
+      object.roles,
+
+      object.authorities,
+
+      object.user,
+
+      object.data,
+
+      object.profile,
+
+    ];
+
+
+    for (
+      const candidate
+      of nestedCandidates
+    ) {
+
+      const role =
+        extractRole(
+          candidate
+        );
+
+
+      if (role) {
+
+        return role;
+      }
+    }
+  }
+
+
+  return null;
 }
-export function can(role: Role, permission: Permission): boolean {
-  return grantFor(role, permission) !== false;
+
+
+/* =========================================================
+   READ AUTHENTICATED ROLE
+   =========================================================
+
+   IMPORTANT:
+
+   This function NEVER changes the role.
+
+   It only reads the role assigned by the backend.
+
+   SSR safe because auth.ts is SSR safe.
+========================================================= */
+
+export function readAuthenticatedRole():
+  Role {
+
+  /*
+   * -------------------------------------------------------
+   * 1. Stored backend user
+   * -------------------------------------------------------
+   */
+
+  const storedUser =
+    getStoredUser();
+
+
+  const storedUserRole =
+    extractRole(
+      storedUser
+    );
+
+
+  if (
+    storedUserRole
+  ) {
+
+    return storedUserRole;
+  }
+
+
+  /*
+   * -------------------------------------------------------
+   * 2. Explicit stored role
+   * -------------------------------------------------------
+   */
+
+  const storedRole =
+    getStoredRole();
+
+
+  if (
+    storedRole
+  ) {
+
+    return normalizeRole(
+      storedRole
+    );
+  }
+
+
+  /*
+   * -------------------------------------------------------
+   * 3. JWT fallback
+   * -------------------------------------------------------
+   *
+   * Current backend JWT primarily contains
+   * username/subject, but this fallback supports
+   * role claims if they are present.
+   */
+
+  const token =
+    getToken();
+
+
+  if (
+    !token
+  ) {
+
+    return "GUEST";
+  }
+
+
+  const jwtRole =
+    extractRoleFromJwt(
+      token
+    );
+
+
+  if (
+    jwtRole
+  ) {
+
+    return jwtRole;
+  }
+
+
+  /*
+   * No authenticated role available.
+   */
+
+  return "GUEST";
 }
 
-const RoleCtx = createContext<{ role: Role; setRole: (r: Role) => void }>({ role: "ADMIN", setRole: () => {} });
 
-export function RoleProvider({ children }: { children: ReactNode }) {
-  const [role, setRole] = useState<Role>("ADMIN");
+/* =========================================================
+   JWT ROLE FALLBACK
+========================================================= */
 
-  useEffect(() => {
-    const saved = window.localStorage.getItem("nsms.role") as Role | null;
-    if (saved) setRole(saved);
-  }, []);
+function extractRoleFromJwt(
+  token: string
+): Role | null {
 
-  const value = useMemo(
-    () => ({
-      role,
-      setRole: (r: Role) => {
-        setRole(r);
-        window.localStorage.setItem("nsms.role", r);
-      },
-    }),
-    [role],
+  if (
+    typeof window ===
+    "undefined"
+  ) {
+
+    return null;
+  }
+
+
+  try {
+
+    const parts =
+      token.split(".");
+
+
+    if (
+      parts.length !== 3
+    ) {
+
+      return null;
+    }
+
+
+    const base64 =
+      parts[1]
+        .replace(
+          /-/g,
+          "+"
+        )
+        .replace(
+          /_/g,
+          "/"
+        );
+
+
+    const padded =
+      base64 +
+      "=".repeat(
+        (
+          4 -
+          (base64.length % 4)
+        ) % 4
+      );
+
+
+    const payload =
+      JSON.parse(
+        window.atob(
+          padded
+        )
+      );
+
+
+    return extractRole(
+      payload
+    );
+
+  }
+  catch {
+
+    return null;
+  }
+}
+
+
+/* =========================================================
+   PERMISSION CHECK
+========================================================= */
+
+export function can(
+  role: Role | string | null | undefined,
+  permission: Permission
+): boolean {
+
+  const normalizedRole =
+    normalizeRole(
+      role
+    );
+
+
+  /*
+   * ADMIN automatically has
+   * all permissions.
+   */
+
+  if (
+    normalizedRole ===
+    "ADMIN"
+  ) {
+
+    return true;
+  }
+
+
+  return (
+    ROLE_PERMISSIONS[
+      normalizedRole
+    ]?.includes(
+      permission
+    ) ?? false
+  );
+}
+
+
+/* =========================================================
+   HAS PERMISSION
+========================================================= */
+
+export function hasPermission(
+  permission: Permission,
+  role?: Role | string | null
+): boolean {
+
+  const currentRole =
+    role ??
+    readAuthenticatedRole();
+
+
+  return can(
+    currentRole,
+    permission
+  );
+}
+
+
+/* =========================================================
+   HAS ANY PERMISSION
+========================================================= */
+
+export function hasAnyPermission(
+  permissions: readonly Permission[],
+  role?: Role | string | null
+): boolean {
+
+  const currentRole =
+    role ??
+    readAuthenticatedRole();
+
+
+  return permissions.some(
+    (permission) =>
+      can(
+        currentRole,
+        permission
+      )
+  );
+}
+
+
+/* =========================================================
+   HAS ALL PERMISSIONS
+========================================================= */
+
+export function hasAllPermissions(
+  permissions: readonly Permission[],
+  role?: Role | string | null
+): boolean {
+
+  const currentRole =
+    role ??
+    readAuthenticatedRole();
+
+
+  return permissions.every(
+    (permission) =>
+      can(
+        currentRole,
+        permission
+      )
+  );
+}
+
+
+/* =========================================================
+   ROLE CHECK
+========================================================= */
+
+export function hasRole(
+  requiredRole: Role,
+  currentRole?: Role | string | null
+): boolean {
+
+  const role =
+    currentRole ??
+    readAuthenticatedRole();
+
+
+  return (
+    normalizeRole(
+      role
+    ) ===
+    requiredRole
+  );
+}
+
+
+/* =========================================================
+   ANY ROLE CHECK
+========================================================= */
+
+export function hasAnyRole(
+  roles: readonly Role[],
+  currentRole?: Role | string | null
+): boolean {
+
+  const role =
+    normalizeRole(
+      currentRole ??
+      readAuthenticatedRole()
+    );
+
+
+  return roles.includes(
+    role
+  );
+}
+
+
+/* =========================================================
+   ROLE CONTEXT
+========================================================= */
+
+interface RoleContextValue {
+
+  /*
+   * Actual authenticated role.
+   */
+
+  role: Role;
+
+
+  /*
+   * Whether the browser-side auth state
+   * has been loaded.
+   */
+
+  initialized: boolean;
+
+
+  /*
+   * Permission check.
+   */
+
+  can: (
+    permission: Permission
+  ) => boolean;
+
+
+  /*
+   * Role check.
+   */
+
+  hasRole: (
+    requiredRole: Role
+  ) => boolean;
+
+
+  /*
+   * Multiple role check.
+   */
+
+  hasAnyRole: (
+    roles: readonly Role[]
+  ) => boolean;
+
+
+  /*
+   * Permission helpers.
+   */
+
+  hasPermission: (
+    permission: Permission
+  ) => boolean;
+
+  hasAnyPermission: (
+    permissions: readonly Permission[]
+  ) => boolean;
+
+  hasAllPermissions: (
+    permissions: readonly Permission[]
+  ) => boolean;
+
+}
+
+
+const RoleContext =
+  createContext<
+    RoleContextValue | undefined
+  >(
+    undefined
   );
 
-  return <RoleCtx.Provider value={value}>{children}</RoleCtx.Provider>;
+
+/* =========================================================
+   ROLE PROVIDER
+========================================================= */
+
+export function RoleProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+
+  /*
+   * -------------------------------------------------------
+   * IMPORTANT SSR RULE
+   * -------------------------------------------------------
+   *
+   * NEVER call localStorage/sessionStorage
+   * directly in the useState initializer.
+   *
+   * Server rendering has no browser storage.
+   */
+
+  const [
+    role,
+    setRole,
+  ] = useState<Role>(
+    "GUEST"
+  );
+
+
+  const [
+    initialized,
+    setInitialized,
+  ] = useState(
+    false
+  );
+
+
+  /* -------------------------------------------------------
+     Load actual backend role after browser hydration.
+  ------------------------------------------------------- */
+
+  useEffect(() => {
+
+    const authenticatedRole =
+      readAuthenticatedRole();
+
+
+    setRole(
+      authenticatedRole
+    );
+
+
+    setInitialized(
+      true
+    );
+
+  }, []);
+
+
+  /* -------------------------------------------------------
+     Listen for login/logout.
+  ------------------------------------------------------- */
+
+  useEffect(() => {
+
+    if (
+      typeof window ===
+      "undefined"
+    ) {
+
+      return;
+    }
+
+
+    const handleAuthChange =
+      () => {
+
+        const authenticatedRole =
+          readAuthenticatedRole();
+
+
+        setRole(
+          authenticatedRole
+        );
+
+      };
+
+
+    window.addEventListener(
+      "streamforge:auth-changed",
+      handleAuthChange
+    );
+
+
+    return () => {
+
+      window.removeEventListener(
+        "streamforge:auth-changed",
+        handleAuthChange
+      );
+
+    };
+
+  }, []);
+
+
+  /* -------------------------------------------------------
+     Context value
+  ------------------------------------------------------- */
+
+  const value =
+    useMemo<RoleContextValue>(
+      () => ({
+
+        role,
+
+        initialized,
+
+        can: (
+          permission
+        ) =>
+          can(
+            role,
+            permission
+          ),
+
+        hasRole: (
+          requiredRole
+        ) =>
+          role ===
+          requiredRole,
+
+        hasAnyRole: (
+          roles
+        ) =>
+          roles.includes(
+            role
+          ),
+
+        hasPermission: (
+          permission
+        ) =>
+          can(
+            role,
+            permission
+          ),
+
+        hasAnyPermission: (
+          permissions
+        ) =>
+          permissions.some(
+            (permission) =>
+              can(
+                role,
+                permission
+              )
+          ),
+
+        hasAllPermissions: (
+          permissions
+        ) =>
+          permissions.every(
+            (permission) =>
+              can(
+                role,
+                permission
+              )
+          ),
+
+      }),
+      [
+        role,
+        initialized,
+      ]
+    );
+
+
+  return (
+    <RoleContext.Provider
+      value={value}
+    >
+
+      {children}
+
+    </RoleContext.Provider>
+  );
 }
 
-export function useRole() {
-  const ctx = useContext(RoleCtx);
-  const profile = ROLES.find((r) => r.id === ctx.role)!;
-  return { ...ctx, profile, can: (p: Permission) => can(ctx.role, p) };
+
+/* =========================================================
+   USE ROLE
+========================================================= */
+
+export function useRole():
+  RoleContextValue {
+
+  const context =
+    useContext(
+      RoleContext
+    );
+
+
+  if (
+    !context
+  ) {
+
+    throw new Error(
+      "useRole must be used inside RoleProvider"
+    );
+  }
+
+
+  return context;
 }
+
+
+/* =========================================================
+   CURRENT ROLE
+========================================================= */
+
+export function getCurrentRole():
+  Role {
+
+  return readAuthenticatedRole();
+}
+
+
+/* =========================================================
+   ROLE DISPLAY NAME
+========================================================= */
+
+export function getRoleLabel(
+  role: Role | string | null | undefined
+): string {
+
+  const normalized =
+    normalizeRole(
+      role
+    );
+
+
+  return (
+    ROLE_LABELS[
+      normalized
+    ] ??
+    "Guest"
+  );
+}
+
+
+/* =========================================================
+   ROLE DESCRIPTION
+========================================================= */
+
+export function getRoleDescription(
+  role: Role | string | null | undefined
+): string {
+
+  const normalized =
+    normalizeRole(
+      role
+    );
+
+
+  return (
+    ROLE_DESCRIPTIONS[
+      normalized
+    ] ??
+    ROLE_DESCRIPTIONS.GUEST
+  );
+}
+
+
+/* =========================================================
+   ROLE LIST
+   =========================================================
+
+   Useful for displaying role information.
+
+   IMPORTANT:
+   This is NOT a role-switcher.
+
+   Do NOT call setRole() from UI.
+========================================================= */
+
+export const AVAILABLE_ROLES: readonly Role[] = [
+
+  "GUEST",
+
+  "VIEWER",
+
+  "CREATOR",
+
+  "DIRECTOR",
+
+  "PRODUCER",
+
+  "CONTENT_MANAGER",
+
+  "ADMIN",
+
+];
+
+
+/* =========================================================
+   ROLE INFORMATION
+========================================================= */
+
+export interface RoleInfo {
+
+  id: Role;
+
+  label: string;
+
+  description: string;
+
+  permissions: readonly Permission[];
+
+}
+
+
+export const ROLE_INFO: readonly RoleInfo[] =
+  AVAILABLE_ROLES.map(
+    (role) => ({
+
+      id: role,
+
+      label:
+        ROLE_LABELS[
+          role
+        ],
+
+      description:
+        ROLE_DESCRIPTIONS[
+          role
+        ],
+
+      permissions:
+        ROLE_PERMISSIONS[
+          role
+        ],
+
+    })
+  );

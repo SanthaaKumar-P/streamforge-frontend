@@ -17,16 +17,19 @@ import {
   Clapperboard,
   DollarSign,
   FileText,
+  Loader2,
   PartyPopper,
   Send,
 } from "lucide-react";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   createShow,
   type ShowRequest,
 } from "@/api/shows";
+
+import { apiRequest } from "@/api/client";
 
 export const Route = createFileRoute(
   "/shows/new"
@@ -63,41 +66,66 @@ const steps = [
   },
 ];
 
+interface Genre {
+  genreId: number;
+  genreName: string;
+  description?: string;
+}
+
 interface FormState {
   title: string;
   description: string;
   synopsis: string;
   language: string;
   targetAudience: string;
+  episodeCount: string;
+  genreIds: number[];
   estimatedBudget: string;
   expectedReleaseDate: string;
 }
 
 function getCurrentUserId(): number | null {
   try {
-    const stored =
-      localStorage.getItem(
-        "streamforge_user"
+    const storages = [
+      localStorage,
+      sessionStorage,
+    ];
+
+    for (const storage of storages) {
+      const stored =
+        storage.getItem(
+          "streamforge_user"
+        );
+
+      if (!stored) {
+        continue;
+      }
+
+      const user = JSON.parse(stored);
+
+      const id = Number(
+        user?.userId ??
+          user?.id ??
+          user?.user_id
       );
 
-    if (!stored) return null;
+      if (
+        Number.isInteger(id) &&
+        id > 0
+      ) {
+        return id;
+      }
+    }
 
-    const user = JSON.parse(stored);
-
-    return (
-      Number(
-        user.userId ??
-          user.id ??
-          user.user_id
-      ) || null
-    );
+    return null;
   } catch {
     return null;
   }
 }
 
 function NewShow() {
-  const [step, setStep] = useState(1);
+  const [step, setStep] =
+    useState(1);
 
   const [submitted, setSubmitted] =
     useState(false);
@@ -105,8 +133,14 @@ function NewShow() {
   const [loading, setLoading] =
     useState(false);
 
+  const [loadingGenres, setLoadingGenres] =
+    useState(true);
+
   const [error, setError] =
     useState("");
+
+  const [genres, setGenres] =
+    useState<Genre[]>([]);
 
   const [form, setForm] =
     useState<FormState>({
@@ -115,9 +149,62 @@ function NewShow() {
       synopsis: "",
       language: "",
       targetAudience: "",
+      episodeCount: "",
+      genreIds: [],
       estimatedBudget: "",
       expectedReleaseDate: "",
     });
+
+  /*
+   * Load genres from the actual backend.
+   */
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadGenres() {
+      try {
+        setLoadingGenres(true);
+        setError("");
+
+        const response =
+          await apiRequest<Genre[]>(
+            "/api/genres"
+          );
+
+        if (!mounted) {
+          return;
+        }
+
+        setGenres(
+          Array.isArray(response)
+            ? response
+            : []
+        );
+      } catch (err) {
+        if (!mounted) {
+          return;
+        }
+
+        setGenres([]);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load genres."
+        );
+      } finally {
+        if (mounted) {
+          setLoadingGenres(false);
+        }
+      }
+    }
+
+    void loadGenres();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   function updateField(
     field: keyof FormState,
@@ -127,31 +214,116 @@ function NewShow() {
       ...current,
       [field]: value,
     }));
+
+    setError("");
+  }
+
+  function toggleGenre(
+    genreId: number
+  ) {
+    setForm((current) => {
+      const exists =
+        current.genreIds.includes(
+          genreId
+        );
+
+      return {
+        ...current,
+        genreIds: exists
+          ? current.genreIds.filter(
+              (id) =>
+                id !== genreId
+            )
+          : [
+              ...current.genreIds,
+              genreId,
+            ],
+      };
+    });
+
+    setError("");
   }
 
   function validateStep() {
     setError("");
 
+    /*
+     * STEP 1
+     */
     if (step === 1) {
-      if (!form.title.trim()) {
+      const title =
+        form.title.trim();
+
+      if (!title) {
         setError(
           "Show title is required."
         );
         return false;
       }
 
-      if (form.title.trim().length < 2) {
+      if (title.length < 2) {
         setError(
           "Show title must contain at least 2 characters."
         );
         return false;
       }
+
+      if (title.length > 200) {
+        setError(
+          "Show title cannot exceed 200 characters."
+        );
+        return false;
+      }
+
+      if (!form.targetAudience.trim()) {
+        setError(
+          "Target audience is required."
+        );
+        return false;
+      }
+
+      const episodeCount =
+        Number(form.episodeCount);
+
+      if (
+        !form.episodeCount ||
+        !Number.isInteger(
+          episodeCount
+        ) ||
+        episodeCount <= 0
+      ) {
+        setError(
+          "Episode count must be a whole number greater than zero."
+        );
+        return false;
+      }
+
+      if (
+        form.genreIds.length === 0
+      ) {
+        setError(
+          "Please select at least one genre."
+        );
+        return false;
+      }
     }
 
+    /*
+     * STEP 2
+     */
     if (step === 2) {
       if (
         form.estimatedBudget &&
-        Number(form.estimatedBudget) < 0
+        (
+          !Number.isFinite(
+            Number(
+              form.estimatedBudget
+            )
+          ) ||
+          Number(
+            form.estimatedBudget
+          ) < 0
+        )
       ) {
         setError(
           "Estimated budget cannot be negative."
@@ -165,9 +337,15 @@ function NewShow() {
             `${form.expectedReleaseDate}T00:00:00`
           );
 
-        const today = new Date();
+        const today =
+          new Date();
 
-        today.setHours(0, 0, 0, 0);
+        today.setHours(
+          0,
+          0,
+          0,
+          0
+        );
 
         if (selected < today) {
           setError(
@@ -182,7 +360,9 @@ function NewShow() {
   }
 
   function nextStep() {
-    if (!validateStep()) return;
+    if (!validateStep()) {
+      return;
+    }
 
     setStep((current) =>
       Math.min(
@@ -196,12 +376,30 @@ function NewShow() {
     setError("");
 
     setStep((current) =>
-      Math.max(1, current - 1)
+      Math.max(
+        1,
+        current - 1
+      )
     );
   }
 
   async function submitShow() {
     setError("");
+
+    /*
+     * Final validation before API call.
+     */
+    const previousStepValue =
+      step;
+
+    setStep(1);
+
+    if (!validateAll()) {
+      setStep(
+        previousStepValue
+      );
+      return;
+    }
 
     const creatorId =
       getCurrentUserId();
@@ -213,48 +411,57 @@ function NewShow() {
       return;
     }
 
-    if (!form.title.trim()) {
-      setError(
-        "Show title is required."
-      );
-      setStep(1);
-      return;
-    }
-
     try {
       setLoading(true);
 
       const request: ShowRequest = {
-        title: form.title.trim(),
+        title:
+          form.title.trim(),
 
         description:
-          form.description.trim() || undefined,
+          form.description.trim() ||
+          undefined,
 
         synopsis:
-          form.synopsis.trim() || undefined,
+          form.synopsis.trim() ||
+          undefined,
 
         language:
-          form.language.trim() || undefined,
+          form.language.trim() ||
+          undefined,
 
         targetAudience:
-          form.targetAudience.trim() ||
-          undefined,
+          form.targetAudience.trim(),
+
+        episodeCount:
+          Number(
+            form.episodeCount
+          ),
+
+        genreIds:
+          form.genreIds,
 
         estimatedBudget:
           form.estimatedBudget
-            ? Number(form.estimatedBudget)
+            ? Number(
+                form.estimatedBudget
+              )
             : undefined,
 
         expectedReleaseDate:
           form.expectedReleaseDate ||
           undefined,
 
-        status: "SUBMITTED",
-
+        /*
+         * Backend now controls the
+         * initial workflow status.
+         */
         creatorId,
       };
 
-      await createShow(request);
+      await createShow(
+        request
+      );
 
       setSubmitted(true);
     } catch (err) {
@@ -266,6 +473,137 @@ function NewShow() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function validateAll() {
+    /*
+     * Title
+     */
+    const title =
+      form.title.trim();
+
+    if (!title) {
+      setError(
+        "Show title is required."
+      );
+      return false;
+    }
+
+    if (
+      title.length < 2 ||
+      title.length > 200
+    ) {
+      setError(
+        "Show title must be between 2 and 200 characters."
+      );
+      return false;
+    }
+
+    /*
+     * Target audience
+     */
+    if (!form.targetAudience.trim()) {
+      setError(
+        "Target audience is required."
+      );
+      return false;
+    }
+
+    /*
+     * Episodes
+     */
+    const episodeCount =
+      Number(form.episodeCount);
+
+    if (
+      !Number.isInteger(
+        episodeCount
+      ) ||
+      episodeCount <= 0
+    ) {
+      setError(
+        "Episode count must be a whole number greater than zero."
+      );
+      return false;
+    }
+
+    /*
+     * Genres
+     */
+    if (
+      form.genreIds.length === 0
+    ) {
+      setError(
+        "Please select at least one genre."
+      );
+      return false;
+    }
+
+    /*
+     * Budget
+     */
+    if (
+      form.estimatedBudget &&
+      (
+        !Number.isFinite(
+          Number(
+            form.estimatedBudget
+          )
+        ) ||
+        Number(
+          form.estimatedBudget
+        ) < 0
+      )
+    ) {
+      setError(
+        "Estimated budget cannot be negative."
+      );
+      return false;
+    }
+
+    /*
+     * Release date
+     */
+    if (form.expectedReleaseDate) {
+      const selected =
+        new Date(
+          `${form.expectedReleaseDate}T00:00:00`
+        );
+
+      const today =
+        new Date();
+
+      today.setHours(
+        0,
+        0,
+        0,
+        0
+      );
+
+      if (selected < today) {
+        setError(
+          "Expected release date cannot be in the past."
+        );
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function getGenreNames() {
+    return form.genreIds
+      .map(
+        (id) =>
+          genres.find(
+            (genre) =>
+              genre.genreId === id
+          )?.genreName
+      )
+      .filter(
+        Boolean
+      )
+      .join(", ");
   }
 
   if (submitted) {
@@ -282,8 +620,8 @@ function NewShow() {
             </h2>
 
             <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
-              Your show has been submitted to the
-              evaluation workflow.
+              Your show has been submitted
+              to the evaluation workflow.
             </p>
 
             <div className="mt-8 flex justify-center gap-2">
@@ -315,33 +653,33 @@ function NewShow() {
       />
 
       <div className="grid lg:grid-cols-[280px_minmax(0,1fr)] gap-6">
-        <Card className="h-fit lg:sticky lg:top-24">
-          <ol className="space-y-5">
-            {steps.map((item) => {
+        <Card className="h-fit sticky top-24">
+          <ol className="space-y-4">
+            {steps.map((s) => {
               const active =
-                item.id === step;
+                s.id === step;
 
               const complete =
-                item.id < step;
+                s.id < step;
 
               return (
                 <li
-                  key={item.id}
+                  key={s.id}
                   className="flex items-center gap-3"
                 >
                   <div
-                    className={`h-9 w-9 rounded-full grid place-items-center text-xs font-bold shrink-0 ${
+                    className={`h-8 w-8 rounded-full grid place-items-center text-xs font-bold shrink-0 ${
                       complete
                         ? "bg-success text-success-foreground"
                         : active
-                        ? "bg-primary text-primary-foreground shadow-[var(--shadow-glow)]"
-                        : "bg-muted text-muted-foreground"
+                          ? "bg-primary text-primary-foreground shadow-[var(--shadow-glow)]"
+                          : "bg-muted text-muted-foreground"
                     }`}
                   >
                     {complete ? (
                       <Check className="h-4 w-4" />
                     ) : (
-                      item.id
+                      s.id
                     )}
                   </div>
 
@@ -353,11 +691,18 @@ function NewShow() {
                           : "text-muted-foreground"
                       }`}
                     >
-                      {item.label}
+                      {s.label}
                     </div>
 
-                    <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                      Step {item.id}
+                    <div className="text-[11px] text-muted-foreground">
+                      {s.id === 1 &&
+                        "Tell us about your concept"}
+
+                      {s.id === 2 &&
+                        "Plan your release"}
+
+                      {s.id === 3 &&
+                        "Confirm submission"}
                     </div>
                   </div>
                 </li>
@@ -368,7 +713,7 @@ function NewShow() {
 
         <Card>
           {error && (
-            <div className="mb-6 rounded-xl border border-destructive/40 bg-destructive/10 text-destructive px-4 py-3 text-sm">
+            <div className="mb-6 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-400">
               {error}
             </div>
           )}
@@ -376,55 +721,87 @@ function NewShow() {
           {step === 1 && (
             <Step1
               form={form}
-              updateField={updateField}
+              genres={genres}
+              loadingGenres={
+                loadingGenres
+              }
+              updateField={
+                updateField
+              }
+              toggleGenre={
+                toggleGenre
+              }
             />
           )}
 
           {step === 2 && (
             <Step2
               form={form}
-              updateField={updateField}
+              updateField={
+                updateField
+              }
             />
           )}
 
           {step === 3 && (
-            <Step3 form={form} />
+            <Step3
+              form={form}
+              genreNames={
+                getGenreNames()
+              }
+            />
           )}
 
-          <div className="mt-8 flex items-center justify-between">
-            <button
-              onClick={previousStep}
-              disabled={step === 1 || loading}
-              className="h-10 px-4 rounded-xl border border-border text-sm inline-flex items-center gap-2 hover:bg-accent transition disabled:opacity-30"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </button>
-
-            {step < steps.length ? (
+          <div className="mt-8 pt-6 border-t border-border flex items-center justify-between gap-3">
+            {step > 1 ? (
               <button
-                onClick={nextStep}
+                type="button"
+                onClick={
+                  previousStep
+                }
                 disabled={loading}
-                className="h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 transition shadow-[var(--shadow-glow)] disabled:opacity-50"
+                className="h-10 px-4 rounded-xl border border-border text-sm inline-flex items-center gap-2 hover:bg-accent transition disabled:opacity-50"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </button>
+            ) : (
+              <Link
+                to="/shows"
+                className="h-10 px-4 rounded-xl border border-border text-sm inline-flex items-center gap-2 hover:bg-accent transition"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Cancel
+              </Link>
+            )}
+
+            {step < 3 ? (
+              <button
+                type="button"
+                onClick={nextStep}
+                className="h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 transition"
               >
                 Continue
                 <ArrowRight className="h-4 w-4" />
               </button>
             ) : (
               <button
-                onClick={submitShow}
+                type="button"
+                onClick={
+                  submitShow
+                }
                 disabled={loading}
-                className="h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 transition shadow-[var(--shadow-glow)] disabled:opacity-50"
+                className="h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 transition disabled:opacity-60"
               >
                 {loading ? (
                   <>
-                    <span className="h-4 w-4 rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     Submitting...
                   </>
                 ) : (
                   <>
                     <Send className="h-4 w-4" />
-                    Submit for review
+                    Submit Show
                   </>
                 )}
               </button>
@@ -436,18 +813,30 @@ function NewShow() {
   );
 }
 
+/* =========================================================
+   STEP 1
+========================================================= */
+
 function Step1({
   form,
+  genres,
+  loadingGenres,
   updateField,
+  toggleGenre,
 }: {
   form: FormState;
+  genres: Genre[];
+  loadingGenres: boolean;
   updateField: (
     field: keyof FormState,
     value: string
   ) => void;
+  toggleGenre: (
+    genreId: number
+  ) => void;
 }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
         <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
           <Clapperboard className="h-5 w-5" />
@@ -459,12 +848,12 @@ function Step1({
           </h3>
 
           <p className="text-xs text-muted-foreground">
-            Tell us about your original.
+            Define the core details of your show.
           </p>
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-4">
+      <div className="grid md:grid-cols-2 gap-5">
         <Fld label="Show title *">
           <input
             value={form.title}
@@ -474,7 +863,8 @@ function Step1({
                 e.target.value
               )
             }
-            placeholder="Enter show title"
+            placeholder="Enter your show title"
+            maxLength={200}
             className={inputCls}
           />
         </Fld>
@@ -488,29 +878,115 @@ function Step1({
                 e.target.value
               )
             }
-            placeholder="English"
+            placeholder="e.g. English"
+            maxLength={50}
             className={inputCls}
           />
         </Fld>
 
-        <Fld label="Target audience">
+        <Fld label="Target audience *">
           <input
-            value={form.targetAudience}
+            value={
+              form.targetAudience
+            }
             onChange={(e) =>
               updateField(
                 "targetAudience",
                 e.target.value
               )
             }
-            placeholder="18-49"
+            placeholder="e.g. Young Adults"
+            maxLength={100}
+            className={inputCls}
+          />
+        </Fld>
+
+        <Fld label="Episode count *">
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={
+              form.episodeCount
+            }
+            onChange={(e) =>
+              updateField(
+                "episodeCount",
+                e.target.value
+              )
+            }
+            placeholder="e.g. 10"
             className={inputCls}
           />
         </Fld>
       </div>
 
+      <div>
+        <div className="text-sm font-medium mb-2">
+          Genres *
+        </div>
+
+        <div className="text-xs text-muted-foreground mb-3">
+          Select one or more genres.
+        </div>
+
+        {loadingGenres ? (
+          <div className="rounded-xl border border-border p-5 flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading available genres...
+          </div>
+        ) : genres.length === 0 ? (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400">
+            No genres are available from
+            the backend.
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {genres.map(
+              (genre) => {
+                const selected =
+                  form.genreIds.includes(
+                    genre.genreId
+                  );
+
+                return (
+                  <button
+                    key={
+                      genre.genreId
+                    }
+                    type="button"
+                    onClick={() =>
+                      toggleGenre(
+                        genre.genreId
+                      )
+                    }
+                    className={`rounded-full border px-4 py-2 text-sm transition ${
+                      selected
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border hover:bg-accent"
+                    }`}
+                    title={
+                      genre.description ??
+                      genre.genreName
+                    }
+                  >
+                    {selected && (
+                      <Check className="inline h-3.5 w-3.5 mr-1" />
+                    )}
+
+                    {
+                      genre.genreName
+                    }
+                  </button>
+                );
+              }
+            )}
+          </div>
+        )}
+      </div>
+
       <Fld label="Synopsis">
         <textarea
-          rows={5}
           value={form.synopsis}
           onChange={(e) =>
             updateField(
@@ -518,14 +994,15 @@ function Step1({
               e.target.value
             )
           }
-          placeholder="Give us the story synopsis..."
-          className={textareaCls}
+          placeholder="Describe the story and creative vision..."
+          rows={5}
+          maxLength={2000}
+          className={`${inputCls} resize-none`}
         />
       </Fld>
 
       <Fld label="Description">
         <textarea
-          rows={5}
           value={form.description}
           onChange={(e) =>
             updateField(
@@ -533,13 +1010,19 @@ function Step1({
               e.target.value
             )
           }
-          placeholder="Describe the show, concept, characters and vision..."
-          className={textareaCls}
+          placeholder="Additional information about the show..."
+          rows={4}
+          maxLength={2000}
+          className={`${inputCls} resize-none`}
         />
       </Fld>
     </div>
   );
 }
+
+/* =========================================================
+   STEP 2
+========================================================= */
 
 function Step2({
   form,
@@ -552,7 +1035,7 @@ function Step2({
   ) => void;
 }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
         <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
           <DollarSign className="h-5 w-5" />
@@ -564,19 +1047,20 @@ function Step2({
           </h3>
 
           <p className="text-xs text-muted-foreground">
-            Provide the expected production budget
-            and release date.
+            Provide planning information for the submission.
           </p>
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-4">
-        <Fld label="Estimated budget (USD)">
+      <div className="grid md:grid-cols-2 gap-5">
+        <Fld label="Estimated budget">
           <input
             type="number"
-            min="0"
+            min={0}
             step="0.01"
-            value={form.estimatedBudget}
+            value={
+              form.estimatedBudget
+            }
             onChange={(e) =>
               updateField(
                 "estimatedBudget",
@@ -591,7 +1075,14 @@ function Step2({
         <Fld label="Expected release date">
           <input
             type="date"
-            value={form.expectedReleaseDate}
+            min={
+              new Date()
+                .toISOString()
+                .split("T")[0]
+            }
+            value={
+              form.expectedReleaseDate
+            }
             onChange={(e) =>
               updateField(
                 "expectedReleaseDate",
@@ -605,16 +1096,15 @@ function Step2({
 
       <div className="rounded-xl border border-border bg-surface/50 p-4">
         <div className="text-sm font-medium">
-          Submission status
+          Submission workflow
         </div>
 
         <div className="text-xs text-muted-foreground mt-1">
-          New submissions will be created with
+          Your show will be created as{" "}
           <span className="text-primary font-semibold">
-            {" "}
             SUBMITTED
           </span>{" "}
-          status and routed through your evaluation
+          and routed through the evaluation
           workflow.
         </div>
       </div>
@@ -622,10 +1112,16 @@ function Step2({
   );
 }
 
+/* =========================================================
+   STEP 3
+========================================================= */
+
 function Step3({
   form,
+  genreNames,
 }: {
   form: FormState;
+  genreNames: string;
 }) {
   return (
     <div className="space-y-5">
@@ -648,18 +1144,41 @@ function Step3({
       <div className="rounded-2xl border border-border divide-y divide-border">
         <ReviewRow
           label="Title"
-          value={form.title || "—"}
+          value={
+            form.title ||
+            "—"
+          }
+        />
+
+        <ReviewRow
+          label="Genres"
+          value={
+            genreNames ||
+            "—"
+          }
         />
 
         <ReviewRow
           label="Language"
-          value={form.language || "—"}
+          value={
+            form.language ||
+            "—"
+          }
         />
 
         <ReviewRow
           label="Target audience"
           value={
-            form.targetAudience || "—"
+            form.targetAudience ||
+            "—"
+          }
+        />
+
+        <ReviewRow
+          label="Episode count"
+          value={
+            form.episodeCount ||
+            "—"
           }
         />
 
@@ -689,7 +1208,8 @@ function Step3({
         </div>
 
         <div className="rounded-xl border border-border p-4 text-sm text-muted-foreground leading-6">
-          {form.synopsis || "No synopsis provided."}
+          {form.synopsis ||
+            "No synopsis provided."}
         </div>
       </div>
 
@@ -705,14 +1225,18 @@ function Step3({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        By submitting, you confirm that the information
-        is accurate. The show will be created under
-        your logged-in account and submitted with
-        PENDING status.
+        By submitting, you confirm that the
+        information is accurate. The show will
+        be created under your logged-in account
+        and routed into the evaluation workflow.
       </p>
     </div>
   );
 }
+
+/* =========================================================
+   SMALL UI HELPERS
+========================================================= */
 
 function Fld({
   label,
@@ -722,13 +1246,13 @@ function Fld({
   children: React.ReactNode;
 }) {
   return (
-    <label className="block">
-      <div className="mb-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+    <div>
+      <label className="text-sm font-medium block mb-2">
         {label}
-      </div>
+      </label>
 
       {children}
-    </label>
+    </div>
   );
 }
 
@@ -740,12 +1264,12 @@ function ReviewRow({
   value: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 p-4 text-sm">
-      <span className="text-muted-foreground">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4">
+      <span className="text-xs uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
 
-      <span className="font-medium text-right">
+      <span className="text-sm font-medium sm:text-right">
         {value}
       </span>
     </div>
@@ -753,7 +1277,4 @@ function ReviewRow({
 }
 
 const inputCls =
-  "w-full h-11 px-3.5 rounded-xl bg-surface border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition";
-
-const textareaCls =
-  "w-full min-h-32 px-3.5 py-3 rounded-xl bg-surface border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition resize-y";
+  "w-full h-11 rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20";

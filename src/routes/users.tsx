@@ -1,15 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
+
 import {
   DashboardLayout,
   PageHeader,
 } from "@/components/layout/DashboardLayout";
+
 import {
   Card,
   Chip,
   StatCard,
 } from "@/components/ui-kit";
+
 import { apiRequest } from "@/api/client";
+
 import { useRole } from "@/lib/roles";
+
 import {
   Search,
   UserPlus,
@@ -24,12 +29,21 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
+
 import {
   useEffect,
   useMemo,
   useState,
+  type FormEvent,
+  type ReactNode,
 } from "react";
+
 import { cn } from "@/lib/utils";
+
+
+/* =========================================================
+   ROUTE
+========================================================= */
 
 export const Route = createFileRoute("/users")({
   head: () => ({
@@ -38,26 +52,37 @@ export const Route = createFileRoute("/users")({
         title:
           "User Management — Netflix Show Manager",
       },
+
       {
-        name: "description",
+        name:
+          "description",
+
         content:
           "Administer studio accounts, roles and access status across the platform.",
       },
+
       {
-        property: "og:title",
+        property:
+          "og:title",
+
         content:
           "User Management — Netflix Show Manager",
       },
+
       {
-        property: "og:description",
+        property:
+          "og:description",
+
         content:
           "Administer studio accounts, roles and access status.",
       },
     ],
   }),
 
-  component: UsersPage,
+  component:
+    UsersPage,
 });
+
 
 /* =========================================================
    TYPES
@@ -65,100 +90,932 @@ export const Route = createFileRoute("/users")({
 
 interface RoleResponse {
   roleId: number;
+
   roleName: string;
+
   description?: string;
 }
 
+
 interface UserResponse {
   userId: number;
+
   fullName: string;
+
   username: string;
+
   email: string;
-  phone?: string;
-  employeeCode?: string;
-  bio?: string;
+
+  phone?: string | null;
+
+  employeeCode?: string | null;
+
+  bio?: string | null;
+
   isActive?: boolean;
-  role?: RoleResponse;
+
+  role?: RoleResponse | null;
 }
+
 
 interface UserForm {
   fullName: string;
+
   username: string;
+
   email: string;
+
   password: string;
+
   phone: string;
+
   employeeCode: string;
+
   bio: string;
+
   roleId: string;
 }
 
+
 /* =========================================================
-   INITIAL FORM
+   EMPTY FORM
 ========================================================= */
 
 const emptyForm: UserForm = {
   fullName: "",
+
   username: "",
+
   email: "",
+
   password: "",
+
   phone: "",
+
   employeeCode: "",
+
   bio: "",
+
   roleId: "",
 };
 
+
 /* =========================================================
-   ROUTE
+   PAGE
 ========================================================= */
 
 function UsersPage() {
-  const { can, profile } = useRole();
 
-  const [users, setUsers] =
-    useState<UserResponse[]>([]);
+  /*
+   * IMPORTANT:
+   *
+   * Do NOT read profile here.
+   *
+   * The current roles.ts implementation only needs
+   * can() for this page.
+   */
 
-  const [roles, setRoles] =
-    useState<RoleResponse[]>([]);
+  const {
+    can,
+  } = useRole();
 
-  const [query, setQuery] =
-    useState("");
 
-  const [roleFilter, setRoleFilter] =
-    useState("ALL");
+  /* =======================================================
+     STATE
+  ======================================================= */
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    users,
+    setUsers,
+  ] = useState<UserResponse[]>([]);
 
-  const [saving, setSaving] =
-    useState(false);
 
-  const [deletingId, setDeletingId] =
-    useState<number | null>(null);
+  const [
+    roles,
+    setRoles,
+  ] = useState<RoleResponse[]>([]);
 
-  const [error, setError] =
-    useState("");
 
-  const [success, setSuccess] =
-    useState("");
+  const [
+    query,
+    setQuery,
+  ] = useState("");
 
-  const [showForm, setShowForm] =
-    useState(false);
 
-  const [editingUser, setEditingUser] =
-    useState<UserResponse | null>(null);
+  const [
+    roleFilter,
+    setRoleFilter,
+  ] = useState("ALL");
 
-  const [form, setForm] =
-    useState<UserForm>(emptyForm);
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+
+  const [
+    saving,
+    setSaving,
+  ] = useState(false);
+
+
+  const [
+    deletingId,
+    setDeletingId,
+  ] = useState<number | null>(null);
+
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+
+  const [
+    success,
+    setSuccess,
+  ] = useState("");
+
+
+  const [
+    showForm,
+    setShowForm,
+  ] = useState(false);
+
+
+  const [
+    editingUser,
+    setEditingUser,
+  ] = useState<UserResponse | null>(null);
+
+
+  const [
+    form,
+    setForm,
+  ] = useState<UserForm>(
+    emptyForm
+  );
+
 
   /* =======================================================
      ACCESS CHECK
   ======================================================= */
 
-  if (!can("manage_users")) {
+  const hasAccess =
+    can("manage_users");
+
+
+  /* =======================================================
+     LOAD DATA
+  ======================================================= */
+
+  async function loadData() {
+
+    try {
+
+      setLoading(true);
+
+      setError("");
+
+
+      const [
+        userData,
+        roleData,
+      ] = await Promise.all([
+
+        apiRequest<UserResponse[]>(
+          "/api/users"
+        ),
+
+        apiRequest<RoleResponse[]>(
+          "/api/roles"
+        ),
+
+      ]);
+
+
+      setUsers(
+        Array.isArray(userData)
+          ? userData
+          : []
+      );
+
+
+      setRoles(
+        Array.isArray(roleData)
+          ? roleData
+          : []
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Failed to load users:",
+        err
+      );
+
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load users."
+      );
+
+    } finally {
+
+      setLoading(false);
+
+    }
+  }
+
+
+  /* =======================================================
+     LOAD ON MOUNT
+  ======================================================= */
+
+  useEffect(() => {
+
+    if (!hasAccess) {
+      setLoading(false);
+      return;
+    }
+
+    void loadData();
+
+  }, [
+    hasAccess,
+  ]);
+
+
+  /* =======================================================
+     FILTER USERS
+  ======================================================= */
+
+  const filteredUsers =
+    useMemo(() => {
+
+      const search =
+        query
+          .trim()
+          .toLowerCase();
+
+
+      return users.filter(
+        (user) => {
+
+          const roleName =
+            user.role?.roleName ||
+            "";
+
+
+          const matchesRole =
+            roleFilter === "ALL" ||
+            roleName === roleFilter;
+
+
+          const searchable = [
+
+            user.fullName,
+
+            user.username,
+
+            user.email,
+
+            user.phone ?? "",
+
+            user.employeeCode ?? "",
+
+            user.bio ?? "",
+
+            roleName,
+
+          ]
+            .join(" ")
+            .toLowerCase();
+
+
+          const matchesSearch =
+            !search ||
+            searchable.includes(
+              search
+            );
+
+
+          return (
+            matchesRole &&
+            matchesSearch
+          );
+        }
+      );
+
+    }, [
+      users,
+      query,
+      roleFilter,
+    ]);
+
+
+  /* =======================================================
+     STATISTICS
+  ======================================================= */
+
+  const totalUsers =
+    users.length;
+
+
+  const activeUsers =
+    users.filter(
+      (user) =>
+        user.isActive === true
+    ).length;
+
+
+  const inactiveUsers =
+    users.filter(
+      (user) =>
+        user.isActive !== true
+    ).length;
+
+
+  const privilegedUsers =
+    users.filter(
+      (user) => {
+
+        const role =
+          user.role?.roleName;
+
+
+        return (
+          role === "ADMIN" ||
+          role === "CONTENT_MANAGER"
+        );
+      }
+    ).length;
+
+
+  /* =======================================================
+     CREATE FORM
+  ======================================================= */
+
+  function openCreateForm() {
+
+    setEditingUser(null);
+
+
+    setForm({
+      ...emptyForm,
+
+      roleId:
+        roles.length > 0
+          ? String(
+              roles[0].roleId
+            )
+          : "",
+    });
+
+
+    setError("");
+
+    setSuccess("");
+
+    setShowForm(true);
+  }
+
+
+  /* =======================================================
+     EDIT FORM
+  ======================================================= */
+
+  function openEditForm(
+    user: UserResponse
+  ) {
+
+    setEditingUser(user);
+
+
+    setForm({
+
+      fullName:
+        user.fullName || "",
+
+      username:
+        user.username || "",
+
+      email:
+        user.email || "",
+
+      password:
+        "",
+
+      phone:
+        user.phone || "",
+
+      employeeCode:
+        user.employeeCode || "",
+
+      bio:
+        user.bio || "",
+
+      roleId:
+        user.role?.roleId
+          ? String(
+              user.role.roleId
+            )
+          : "",
+    });
+
+
+    setError("");
+
+    setSuccess("");
+
+    setShowForm(true);
+  }
+
+
+  /* =======================================================
+     CLOSE FORM
+  ======================================================= */
+
+  function closeForm() {
+
+    if (saving) {
+      return;
+    }
+
+
+    setShowForm(false);
+
+    setEditingUser(null);
+
+    setForm({
+      ...emptyForm,
+    });
+  }
+
+
+  /* =======================================================
+     UPDATE FORM
+  ======================================================= */
+
+  function updateForm(
+    field: keyof UserForm,
+    value: string
+  ) {
+
+    setForm(
+      (previous) => ({
+        ...previous,
+
+        [field]:
+          value,
+      })
+    );
+  }
+
+
+  /* =======================================================
+     VALIDATION
+  ======================================================= */
+
+  function validateForm(): string {
+
+    if (
+      form.fullName
+        .trim()
+        .length < 2
+    ) {
+
+      return (
+        "Full name must contain at least 2 characters."
+      );
+    }
+
+
+    if (
+      form.fullName
+        .trim()
+        .length > 100
+    ) {
+
+      return (
+        "Full name cannot exceed 100 characters."
+      );
+    }
+
+
+    if (
+      form.username
+        .trim()
+        .length < 3
+    ) {
+
+      return (
+        "Username must contain at least 3 characters."
+      );
+    }
+
+
+    if (
+      form.username
+        .trim()
+        .length > 50
+    ) {
+
+      return (
+        "Username cannot exceed 50 characters."
+      );
+    }
+
+
+    if (
+      !form.email.trim()
+    ) {
+
+      return (
+        "Email is required."
+      );
+    }
+
+
+    if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        form.email.trim()
+      )
+    ) {
+
+      return (
+        "Enter a valid email address."
+      );
+    }
+
+
+    /*
+     * Password required for CREATE.
+     */
+
+    if (!editingUser) {
+
+      if (
+        form.password.length <
+        6
+      ) {
+
+        return (
+          "Password must contain at least 6 characters."
+        );
+      }
+
+    }
+
+
+    /*
+     * Password optional for EDIT.
+     */
+
+    if (
+      editingUser &&
+      form.password &&
+      form.password.length < 6
+    ) {
+
+      return (
+        "New password must contain at least 6 characters."
+      );
+    }
+
+
+    if (
+      form.phone &&
+      !/^[0-9]{10}$/.test(
+        form.phone
+      )
+    ) {
+
+      return (
+        "Phone number must contain exactly 10 digits."
+      );
+    }
+
+
+    if (
+      form.employeeCode.length >
+      50
+    ) {
+
+      return (
+        "Employee code cannot exceed 50 characters."
+      );
+    }
+
+
+    if (
+      form.bio.length >
+      500
+    ) {
+
+      return (
+        "Bio cannot exceed 500 characters."
+      );
+    }
+
+
+    if (
+      !form.roleId ||
+      Number(form.roleId) <= 0
+    ) {
+
+      return (
+        "Please select a role."
+      );
+    }
+
+
+    return "";
+  }
+
+
+  /* =======================================================
+     SAVE USER
+  ======================================================= */
+
+  async function saveUser(
+    event: FormEvent<HTMLFormElement>
+  ) {
+
+    event.preventDefault();
+
+
+    setError("");
+
+    setSuccess("");
+
+
+    const validationError =
+      validateForm();
+
+
+    if (validationError) {
+
+      setError(
+        validationError
+      );
+
+      return;
+    }
+
+
+    setSaving(true);
+
+
+    try {
+
+      const payload: Record<
+        string,
+        unknown
+      > = {
+
+        fullName:
+          form.fullName.trim(),
+
+        username:
+          form.username.trim(),
+
+        email:
+          form.email.trim(),
+
+        phone:
+          form.phone.trim() ||
+          null,
+
+        employeeCode:
+          form.employeeCode.trim() ||
+          null,
+
+        bio:
+          form.bio.trim() ||
+          null,
+
+        roleId:
+          Number(form.roleId),
+
+      };
+
+
+      /*
+       * Password:
+       *
+       * CREATE -> required
+       *
+       * EDIT -> send only when changed
+       */
+
+      if (
+        !editingUser ||
+        form.password.trim()
+      ) {
+
+        payload.password =
+          form.password;
+      }
+
+
+      if (editingUser) {
+
+        const response =
+          await apiRequest<UserResponse>(
+            `/api/users/${editingUser.userId}`,
+            {
+              method:
+                "PUT",
+
+              body:
+                JSON.stringify(
+                  payload
+                ),
+            }
+          );
+
+
+        setUsers(
+          (previous) =>
+            previous.map(
+              (user) =>
+                user.userId ===
+                editingUser.userId
+                  ? response
+                  : user
+            )
+        );
+
+
+        setSuccess(
+          "User updated successfully."
+        );
+
+      } else {
+
+        const response =
+          await apiRequest<UserResponse>(
+            "/api/users",
+            {
+              method:
+                "POST",
+
+              body:
+                JSON.stringify(
+                  payload
+                ),
+            }
+          );
+
+
+        setUsers(
+          (previous) => [
+            ...previous,
+            response,
+          ]
+        );
+
+
+        setSuccess(
+          "User created successfully."
+        );
+      }
+
+
+      setShowForm(false);
+
+      setEditingUser(null);
+
+      setForm({
+        ...emptyForm,
+      });
+
+    } catch (err) {
+
+      console.error(
+        "Failed to save user:",
+        err
+      );
+
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to save user."
+      );
+
+    } finally {
+
+      setSaving(false);
+
+    }
+  }
+
+
+  /* =======================================================
+     DELETE USER
+  ======================================================= */
+
+  async function deleteUser(
+    user: UserResponse
+  ) {
+
+    const confirmed =
+      window.confirm(
+        `Are you sure you want to delete "${user.fullName}"?`
+      );
+
+
+    if (!confirmed) {
+      return;
+    }
+
+
+    setDeletingId(
+      user.userId
+    );
+
+
+    setError("");
+
+    setSuccess("");
+
+
+    try {
+
+      await apiRequest<void>(
+        `/api/users/${user.userId}`,
+        {
+          method:
+            "DELETE",
+        }
+      );
+
+
+      setUsers(
+        (previous) =>
+          previous.filter(
+            (item) =>
+              item.userId !==
+              user.userId
+          )
+      );
+
+
+      setSuccess(
+        "User deleted successfully."
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Failed to delete user:",
+        err
+      );
+
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to delete user."
+      );
+
+    } finally {
+
+      setDeletingId(null);
+
+    }
+  }
+
+
+  /* =======================================================
+     ACCESS DENIED
+  ======================================================= */
+
+  if (!hasAccess) {
+
     return (
       <DashboardLayout>
-        <div className="min-h-[60vh] grid place-items-center">
-          <Card className="max-w-md text-center py-12">
+
+        <div
+          className="
+            min-h-[60vh]
+            grid
+            place-items-center
+          "
+        >
+
+          <Card
+            className="
+              max-w-md
+              text-center
+              py-12
+            "
+          >
+
             <div
               className="
                 mx-auto
@@ -172,569 +1029,127 @@ function UsersPage() {
                 mb-5
               "
             >
-              <Lock className="h-7 w-7" />
+
+              <Lock
+                className="
+                  h-7
+                  w-7
+                "
+              />
+
             </div>
 
-            <h2 className="text-xl font-bold">
+
+            <h2
+              className="
+                text-xl
+                font-bold
+              "
+            >
               Access restricted
             </h2>
 
-            <p className="text-sm text-muted-foreground mt-2">
-              User management requires the
-              Administrator role. You are
-              currently signed in as{" "}
-              {profile.label}.
+
+            <p
+              className="
+                text-sm
+                text-muted-foreground
+                mt-2
+              "
+            >
+              User management is available
+              only to administrators.
             </p>
+
           </Card>
+
         </div>
+
       </DashboardLayout>
     );
   }
 
-  /* =======================================================
-     LOAD USERS + ROLES
-  ======================================================= */
-
-  async function loadData() {
-    try {
-      setLoading(true);
-      setError("");
-
-      const [userData, roleData] =
-        await Promise.all([
-          apiRequest<UserResponse[]>(
-            "/api/users"
-          ),
-
-          apiRequest<RoleResponse[]>(
-            "/api/roles"
-          ),
-        ]);
-
-      setUsers(
-        Array.isArray(userData)
-          ? userData
-          : []
-      );
-
-      setRoles(
-        Array.isArray(roleData)
-          ? roleData
-          : []
-      );
-    } catch (err) {
-      console.error(
-        "Failed to load users:",
-        err
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load users"
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  /* =======================================================
-     FILTER
-  ======================================================= */
-
-  const filteredUsers = useMemo(() => {
-    const search =
-      query.trim().toLowerCase();
-
-    return users.filter((user) => {
-      const roleName =
-        user.role?.roleName || "";
-
-      const matchesRole =
-        roleFilter === "ALL" ||
-        roleName === roleFilter;
-
-      const searchable = [
-        user.fullName,
-        user.username,
-        user.email,
-        user.phone,
-        user.employeeCode,
-        user.bio,
-        roleName,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return (
-        matchesRole &&
-        (!search ||
-          searchable.includes(search))
-      );
-    });
-  }, [
-    users,
-    query,
-    roleFilter,
-  ]);
-
-  /* =======================================================
-     STATISTICS
-  ======================================================= */
-
-  const totalUsers =
-    users.length;
-
-  const activeUsers =
-    users.filter(
-      (user) =>
-        user.isActive === true
-    ).length;
-
-  const inactiveUsers =
-    users.filter(
-      (user) =>
-        user.isActive !== true
-    ).length;
-
-  const privilegedUsers =
-    users.filter((user) => {
-      const role =
-        user.role?.roleName;
-
-      return (
-        role === "ADMIN" ||
-        role === "CONTENT_MANAGER"
-      );
-    }).length;
-
-  /* =======================================================
-     OPEN CREATE FORM
-  ======================================================= */
-
-  function openCreateForm() {
-    setEditingUser(null);
-    setForm({
-      ...emptyForm,
-      roleId:
-        roles.length > 0
-          ? String(roles[0].roleId)
-          : "",
-    });
-
-    setError("");
-    setSuccess("");
-    setShowForm(true);
-  }
-
-  /* =======================================================
-     OPEN EDIT FORM
-  ======================================================= */
-
-  function openEditForm(
-    user: UserResponse
-  ) {
-    setEditingUser(user);
-
-    setForm({
-      fullName:
-        user.fullName || "",
-
-      username:
-        user.username || "",
-
-      email:
-        user.email || "",
-
-      /*
-       * Password is intentionally empty.
-       *
-       * Backend only updates password
-       * when a value is supplied.
-       */
-      password: "",
-
-      phone:
-        user.phone || "",
-
-      employeeCode:
-        user.employeeCode || "",
-
-      bio:
-        user.bio || "",
-
-      roleId:
-        user.role?.roleId
-          ? String(user.role.roleId)
-          : "",
-    });
-
-    setError("");
-    setSuccess("");
-    setShowForm(true);
-  }
-
-  /* =======================================================
-     CLOSE FORM
-  ======================================================= */
-
-  function closeForm() {
-    if (saving) {
-      return;
-    }
-
-    setShowForm(false);
-    setEditingUser(null);
-    setForm(emptyForm);
-  }
-
-  /* =======================================================
-     FORM CHANGE
-  ======================================================= */
-
-  function updateForm(
-    field: keyof UserForm,
-    value: string
-  ) {
-    setForm((previous) => ({
-      ...previous,
-      [field]: value,
-    }));
-  }
-
-  /* =======================================================
-     VALIDATION
-  ======================================================= */
-
-  function validateForm() {
-    if (
-      form.fullName.trim().length <
-      2
-    ) {
-      return "Full name must contain at least 2 characters.";
-    }
-
-    if (
-      form.fullName.trim().length >
-      100
-    ) {
-      return "Full name cannot exceed 100 characters.";
-    }
-
-    if (
-      form.username.trim().length <
-      3
-    ) {
-      return "Username must contain at least 3 characters.";
-    }
-
-    if (
-      form.username.trim().length >
-      50
-    ) {
-      return "Username cannot exceed 50 characters.";
-    }
-
-    if (!form.email.trim()) {
-      return "Email is required.";
-    }
-
-    if (
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-        form.email.trim()
-      )
-    ) {
-      return "Enter a valid email address.";
-    }
-
-    /*
-     * Password is required during CREATE
-     * because the backend explicitly checks it.
-     */
-    if (!editingUser) {
-      if (
-        form.password.trim().length <
-        6
-      ) {
-        return "Password must contain at least 6 characters.";
-      }
-
-      if (
-        form.password.length > 100
-      ) {
-        return "Password cannot exceed 100 characters.";
-      }
-    }
-
-    /*
-     * During EDIT, password is optional.
-     */
-    if (
-      editingUser &&
-      form.password &&
-      form.password.length < 6
-    ) {
-      return "Password must contain at least 6 characters.";
-    }
-
-    if (
-      form.phone &&
-      !/^[0-9]{10}$/.test(
-        form.phone
-      )
-    ) {
-      return "Phone number must contain exactly 10 digits.";
-    }
-
-    if (
-      form.employeeCode.length >
-      50
-    ) {
-      return "Employee code cannot exceed 50 characters.";
-    }
-
-    if (
-      form.bio.length > 500
-    ) {
-      return "Bio cannot exceed 500 characters.";
-    }
-
-    if (
-      !form.roleId ||
-      Number(form.roleId) <= 0
-    ) {
-      return "Please select a role.";
-    }
-
-    return "";
-  }
-
-  /* =======================================================
-     CREATE / UPDATE
-  ======================================================= */
-
-  async function saveUser(
-    event: React.FormEvent
-  ) {
-    event.preventDefault();
-
-    setError("");
-    setSuccess("");
-
-    const validationError =
-      validateForm();
-
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
-    setSaving(true);
-
-    try {
-      const payload: Record<
-        string,
-        unknown
-      > = {
-        fullName:
-          form.fullName.trim(),
-
-        username:
-          form.username.trim(),
-
-        email:
-          form.email.trim(),
-
-        phone:
-          form.phone.trim() || null,
-
-        employeeCode:
-          form.employeeCode.trim() ||
-          null,
-
-        bio:
-          form.bio.trim() || null,
-
-        roleId:
-          Number(form.roleId),
-      };
-
-      /*
-       * Only send password when:
-       *
-       * 1. Creating a user
-       * 2. Updating and a new password
-       *    was actually entered
-       */
-      if (
-        !editingUser ||
-        form.password.trim()
-      ) {
-        payload.password =
-          form.password;
-      }
-
-      const response =
-        editingUser
-          ? await apiRequest<UserResponse>(
-              `/api/users/${editingUser.userId}`,
-              {
-                method: "PUT",
-                body: JSON.stringify(
-                  payload
-                ),
-              }
-            )
-          : await apiRequest<UserResponse>(
-              "/api/users",
-              {
-                method: "POST",
-                body: JSON.stringify(
-                  payload
-                ),
-              }
-            );
-
-      if (editingUser) {
-        setUsers((previous) =>
-          previous.map((user) =>
-            user.userId ===
-            editingUser.userId
-              ? response
-              : user
-          )
-        );
-
-        setSuccess(
-          "User updated successfully."
-        );
-      } else {
-        setUsers((previous) => [
-          ...previous,
-          response,
-        ]);
-
-        setSuccess(
-          "User created successfully."
-        );
-      }
-
-      /*
-       * Close the modal after a successful
-       * backend operation.
-       */
-      setShowForm(false);
-      setEditingUser(null);
-      setForm(emptyForm);
-    } catch (err) {
-      console.error(
-        "Failed to save user:",
-        err
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to save user."
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  /* =======================================================
-     DELETE USER
-  ======================================================= */
-
-  async function deleteUser(
-    user: UserResponse
-  ) {
-    const confirmed =
-      window.confirm(
-        `Are you sure you want to delete "${user.fullName}"? This action cannot be undone.`
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setDeletingId(user.userId);
-    setError("");
-    setSuccess("");
-
-    try {
-      await apiRequest<void>(
-        `/api/users/${user.userId}`,
-        {
-          method: "DELETE",
-        }
-      );
-
-      setUsers((previous) =>
-        previous.filter(
-          (item) =>
-            item.userId !==
-            user.userId
-        )
-      );
-
-      setSuccess(
-        "User deleted successfully."
-      );
-    } catch (err) {
-      console.error(
-        "Failed to delete user:",
-        err
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to delete user."
-      );
-    } finally {
-      setDeletingId(null);
-    }
-  }
 
   /* =======================================================
      LOADING
   ======================================================= */
 
   if (loading) {
+
     return (
       <DashboardLayout>
+
         <PageHeader
           title="User Management"
           description="Loading users and roles..."
         />
 
-        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+
+        <div
+          className="
+            grid
+            sm:grid-cols-2
+            xl:grid-cols-4
+            gap-4
+            mb-6
+          "
+        >
+
           {Array.from({
             length: 4,
-          }).map((_, index) => (
-            <Card
-              key={index}
-              className="animate-pulse"
-            >
-              <div className="h-3 w-24 rounded bg-muted" />
+          }).map(
+            (_, index) => (
 
-              <div className="mt-4 h-8 w-16 rounded bg-muted" />
-            </Card>
-          ))}
+              <Card
+                key={index}
+                className="animate-pulse"
+              >
+
+                <div
+                  className="
+                    h-3
+                    w-24
+                    rounded
+                    bg-muted
+                  "
+                />
+
+                <div
+                  className="
+                    mt-4
+                    h-8
+                    w-16
+                    rounded
+                    bg-muted
+                  "
+                />
+
+              </Card>
+
+            )
+          )}
+
         </div>
 
-        <Card className="animate-pulse">
-          <div className="h-10 rounded bg-muted" />
+
+        <Card
+          className="animate-pulse"
+        >
+
+          <div
+            className="
+              h-10
+              rounded
+              bg-muted
+            "
+          />
+
         </Card>
+
       </DashboardLayout>
     );
   }
+
 
   /* =======================================================
      MAIN PAGE
@@ -742,13 +1157,17 @@ function UsersPage() {
 
   return (
     <DashboardLayout>
+
       <PageHeader
         title="User Management"
         description="Accounts, roles and access information across the studio."
         actions={
+
           <button
             type="button"
-            onClick={openCreateForm}
+            onClick={
+              openCreateForm
+            }
             className="
               h-10
               px-4
@@ -765,17 +1184,27 @@ function UsersPage() {
               shadow-[var(--shadow-glow)]
             "
           >
-            <UserPlus className="h-4 w-4" />
+
+            <UserPlus
+              className="
+                h-4
+                w-4
+              "
+            />
+
             Create user
+
           </button>
         }
       />
 
-      {/* =====================================================
-          SUCCESS / ERROR
-      ===================================================== */}
+
+      {/* ===================================================
+          ERROR
+      =================================================== */}
 
       {error && (
+
         <div
           className="
             mb-4
@@ -789,90 +1218,182 @@ function UsersPage() {
             gap-3
           "
         >
-          <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
 
-          <div className="text-sm text-destructive">
+          <AlertCircle
+            className="
+              h-5
+              w-5
+              text-destructive
+              shrink-0
+            "
+          />
+
+          <div
+            className="
+              text-sm
+              text-destructive
+            "
+          >
             {error}
           </div>
 
+
           <button
             type="button"
-            onClick={() => setError("")}
-            className="ml-auto"
+            onClick={() =>
+              setError("")
+            }
+            className="
+              ml-auto
+              text-destructive
+            "
           >
-            <X className="h-4 w-4" />
+
+            <X
+              className="
+                h-4
+                w-4
+              "
+            />
+
           </button>
+
         </div>
       )}
 
+
+      {/* ===================================================
+          SUCCESS
+      =================================================== */}
+
       {success && (
+
         <div
           className="
             mb-4
             rounded-xl
             border
-            border-success/30
-            bg-success/10
+            border-green-500/30
+            bg-green-500/10
             p-4
             text-sm
-            text-success
+            text-green-500
           "
         >
           {success}
         </div>
       )}
 
-      {/* =====================================================
-          STATS
-      ===================================================== */}
 
-      <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+      {/* ===================================================
+          STATS
+      =================================================== */}
+
+      <div
+        className="
+          grid
+          sm:grid-cols-2
+          xl:grid-cols-4
+          gap-4
+          mb-6
+        "
+      >
+
         <StatCard
           label="Total accounts"
-          value={String(totalUsers)}
+          value={
+            String(totalUsers)
+          }
           icon={
-            <Users className="h-5 w-5" />
+            <Users
+              className="
+                h-5
+                w-5
+              "
+            />
           }
           accent="primary"
         />
 
+
         <StatCard
           label="Active"
-          value={String(activeUsers)}
+          value={
+            String(activeUsers)
+          }
           icon={
-            <UserCheck className="h-5 w-5" />
+            <UserCheck
+              className="
+                h-5
+                w-5
+              "
+            />
           }
           accent="success"
         />
 
+
         <StatCard
           label="Inactive"
-          value={String(inactiveUsers)}
+          value={
+            String(inactiveUsers)
+          }
           icon={
-            <Lock className="h-5 w-5" />
+            <Lock
+              className="
+                h-5
+                w-5
+              "
+            />
           }
           accent="warning"
         />
 
+
         <StatCard
           label="Privileged roles"
-          value={String(
-            privilegedUsers
-          )}
+          value={
+            String(
+              privilegedUsers
+            )
+          }
           icon={
-            <ShieldAlert className="h-5 w-5" />
+            <ShieldAlert
+              className="
+                h-5
+                w-5
+              "
+            />
           }
           accent="info"
         />
+
       </div>
 
-      {/* =====================================================
-          SEARCH + FILTER
-      ===================================================== */}
+
+      {/* ===================================================
+          SEARCH / FILTER
+      =================================================== */}
 
       <Card className="mb-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-0 flex-1">
+
+        <div
+          className="
+            flex
+            flex-wrap
+            items-center
+            gap-3
+          "
+        >
+
+          <div
+            className="
+              relative
+              min-w-0
+              flex-1
+            "
+          >
+
             <Search
               className="
                 absolute
@@ -885,6 +1406,7 @@ function UsersPage() {
               "
             />
 
+
             <input
               value={query}
               onChange={(event) =>
@@ -892,8 +1414,10 @@ function UsersPage() {
                   event.target.value
                 )
               }
-              placeholder="Search by name, username, email, employee code or role..."
-              className="
+              placeholder="
+                Search by name, username, email, employee code or role...
+              "
+              className={`
                 w-full
                 h-10
                 pl-10
@@ -906,19 +1430,32 @@ function UsersPage() {
                 focus:outline-none
                 focus:ring-2
                 focus:ring-ring
-              "
+              `}
             />
+
           </div>
 
-          <div className="flex flex-wrap gap-1.5">
+
+          <div
+            className="
+              flex
+              flex-wrap
+              gap-1.5
+            "
+          >
+
             <button
               type="button"
               onClick={() =>
-                setRoleFilter("ALL")
+                setRoleFilter(
+                  "ALL"
+                )
               }
               className={cn(
                 "h-9 px-3 rounded-lg text-xs font-medium transition border",
-                roleFilter === "ALL"
+
+                roleFilter ===
+                  "ALL"
                   ? "bg-primary text-primary-foreground border-transparent"
                   : "border-border hover:bg-accent"
               )}
@@ -926,39 +1463,69 @@ function UsersPage() {
               All roles
             </button>
 
-            {roles.map((role) => (
-              <button
-                key={role.roleId}
-                type="button"
-                onClick={() =>
-                  setRoleFilter(
+
+            {roles.map(
+              (role) => (
+
+                <button
+                  key={
+                    role.roleId
+                  }
+                  type="button"
+                  onClick={() =>
+                    setRoleFilter(
+                      role.roleName
+                    )
+                  }
+                  className={cn(
+                    "h-9 px-3 rounded-lg text-xs font-medium transition border",
+
+                    roleFilter ===
+                      role.roleName
+                      ? "bg-primary text-primary-foreground border-transparent"
+                      : "border-border hover:bg-accent"
+                  )}
+                >
+                  {formatRoleName(
                     role.roleName
-                  )
-                }
-                className={cn(
-                  "h-9 px-3 rounded-lg text-xs font-medium transition border",
-                  roleFilter ===
-                    role.roleName
-                    ? "bg-primary text-primary-foreground border-transparent"
-                    : "border-border hover:bg-accent"
-                )}
-              >
-                {formatRoleName(
-                  role.roleName
-                )}
-              </button>
-            ))}
+                  )}
+                </button>
+
+              )
+            )}
+
           </div>
+
         </div>
+
       </Card>
 
-      {/* =====================================================
-          USERS TABLE
-      ===================================================== */}
 
-      <Card className="!p-0 overflow-hidden">
-        <div className="overflow-x-auto scrollbar-thin">
-          <table className="w-full text-sm">
+      {/* ===================================================
+          USERS TABLE
+      =================================================== */}
+
+      <Card
+        className="
+          !p-0
+          overflow-hidden
+        "
+      >
+
+        <div
+          className="
+            overflow-x-auto
+            scrollbar-thin
+          "
+        >
+
+          <table
+            className="
+              w-full
+              text-sm
+            "
+          >
+
             <thead
               className="
                 text-left
@@ -969,7 +1536,9 @@ function UsersPage() {
                 bg-surface-elevated/40
               "
             >
+
               <tr>
+
                 <th className="p-4">
                   User
                 </th>
@@ -990,15 +1559,25 @@ function UsersPage() {
                   Status
                 </th>
 
-                <th className="p-4 text-right">
+                <th
+                  className="
+                    p-4
+                    text-right
+                  "
+                >
                   Actions
                 </th>
+
               </tr>
+
             </thead>
 
+
             <tbody>
+
               {filteredUsers.map(
                 (user) => (
+
                   <tr
                     key={
                       user.userId
@@ -1010,10 +1589,19 @@ function UsersPage() {
                       transition
                     "
                   >
+
                     {/* USER */}
 
                     <td className="p-4">
-                      <div className="flex items-center gap-3">
+
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-3
+                        "
+                      >
+
                         <div
                           className="
                             h-10
@@ -1032,54 +1620,113 @@ function UsersPage() {
                           )}
                         </div>
 
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">
+
+                        <div
+                          className="
+                            min-w-0
+                          "
+                        >
+
+                          <div
+                            className="
+                              font-medium
+                              truncate
+                            "
+                          >
                             {
                               user.fullName
                             }
                           </div>
 
-                          <div className="text-xs text-muted-foreground truncate">
-                            @{user.username}
+
+                          <div
+                            className="
+                              text-xs
+                              text-muted-foreground
+                              truncate
+                            "
+                          >
+                            @
+                            {
+                              user.username
+                            }
                           </div>
 
-                          <div className="text-xs text-muted-foreground truncate">
-                            {user.email}
+
+                          <div
+                            className="
+                              text-xs
+                              text-muted-foreground
+                              truncate
+                            "
+                          >
+                            {
+                              user.email
+                            }
                           </div>
+
                         </div>
+
                       </div>
+
                     </td>
+
 
                     {/* EMPLOYEE CODE */}
 
                     <td className="p-4">
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {user.employeeCode ||
-                          "—"}
+
+                      <span
+                        className="
+                          font-mono
+                          text-xs
+                          text-muted-foreground
+                        "
+                      >
+                        {
+                          user.employeeCode ||
+                          "—"
+                        }
                       </span>
+
                     </td>
+
 
                     {/* ROLE */}
 
                     <td className="p-4">
-                      <Chip variant="info">
+
+                      <Chip
+                        variant="info"
+                      >
                         {formatRoleName(
                           user.role
                             ?.roleName
                         )}
                       </Chip>
+
                     </td>
+
 
                     {/* PHONE */}
 
-                    <td className="p-4 text-muted-foreground">
-                      {user.phone ||
-                        "—"}
+                    <td
+                      className="
+                        p-4
+                        text-muted-foreground
+                      "
+                    >
+                      {
+                        user.phone ||
+                        "—"
+                      }
                     </td>
+
 
                     {/* STATUS */}
 
                     <td className="p-4">
+
                       <Chip
                         variant={
                           user.isActive
@@ -1091,13 +1738,21 @@ function UsersPage() {
                           ? "Active"
                           : "Inactive"}
                       </Chip>
+
                     </td>
+
 
                     {/* ACTIONS */}
 
                     <td className="p-4">
-                      <div className="flex justify-end gap-1.5">
-                        {/* EDIT */}
+
+                      <div
+                        className="
+                          flex
+                          justify-end
+                          gap-1.5
+                        "
+                      >
 
                         <button
                           type="button"
@@ -1121,11 +1776,18 @@ function UsersPage() {
                             transition
                           "
                         >
-                          <Pencil className="h-3.5 w-3.5" />
+
+                          <Pencil
+                            className="
+                              h-3.5
+                              w-3.5
+                            "
+                          />
+
                           Edit
+
                         </button>
 
-                        {/* DELETE */}
 
                         <button
                           type="button"
@@ -1135,7 +1797,7 @@ function UsersPage() {
                             user.userId
                           }
                           onClick={() =>
-                            deleteUser(
+                            void deleteUser(
                               user
                             )
                           }
@@ -1155,43 +1817,102 @@ function UsersPage() {
                             disabled:opacity-50
                           "
                         >
+
                           {deletingId ===
                           user.userId ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+
+                            <Loader2
+                              className="
+                                h-3.5
+                                w-3.5
+                                animate-spin
+                              "
+                            />
+
                           ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
+
+                            <Trash2
+                              className="
+                                h-3.5
+                                w-3.5
+                              "
+                            />
+
                           )}
 
                           Delete
+
                         </button>
+
                       </div>
+
                     </td>
+
                   </tr>
+
                 )
               )}
+
             </tbody>
+
           </table>
+
         </div>
 
-        {/* EMPTY */}
+
+        {/* =================================================
+            EMPTY
+        ================================================= */}
 
         {filteredUsers.length ===
           0 && (
-          <div className="p-12 text-center">
-            <Users className="h-8 w-8 mx-auto text-muted-foreground/50 mb-3" />
 
-            <div className="text-sm font-medium">
+          <div
+            className="
+              p-12
+              text-center
+            "
+          >
+
+            <Users
+              className="
+                h-8
+                w-8
+                mx-auto
+                text-muted-foreground/50
+                mb-3
+              "
+            />
+
+
+            <div
+              className="
+                text-sm
+                font-medium
+              "
+            >
               No users found
             </div>
 
-            <div className="text-xs text-muted-foreground mt-1">
+
+            <div
+              className="
+                text-xs
+                text-muted-foreground
+                mt-1
+              "
+            >
               Try changing your search
               or role filter.
             </div>
+
           </div>
         )}
 
-        {/* FOOTER */}
+
+        {/* =================================================
+            FOOTER
+        ================================================= */}
 
         <div
           className="
@@ -1205,23 +1926,33 @@ function UsersPage() {
             gap-3
           "
         >
+
           <span>
             Showing{" "}
-            {filteredUsers.length} of{" "}
+            {
+              filteredUsers.length
+            }{" "}
+            of{" "}
             {users.length} users
           </span>
 
+
           <span>
-            {roles.length} roles available
+            {roles.length} roles
+            available
           </span>
+
         </div>
+
       </Card>
 
-      {/* =====================================================
+
+      {/* ===================================================
           CREATE / EDIT MODAL
-      ===================================================== */}
+      =================================================== */}
 
       {showForm && (
+
         <div
           className="
             fixed
@@ -1235,6 +1966,7 @@ function UsersPage() {
             p-4
           "
         >
+
           <div
             className="
               w-full
@@ -1248,7 +1980,8 @@ function UsersPage() {
               shadow-2xl
             "
           >
-            {/* MODAL HEADER */}
+
+            {/* HEADER */}
 
             <div
               className="
@@ -1261,23 +1994,41 @@ function UsersPage() {
                 gap-3
               "
             >
+
               <div>
-                <div className="text-lg font-semibold">
+
+                <div
+                  className="
+                    text-lg
+                    font-semibold
+                  "
+                >
                   {editingUser
                     ? "Edit User"
                     : "Create User"}
                 </div>
 
-                <div className="text-xs text-muted-foreground mt-1">
+
+                <div
+                  className="
+                    text-xs
+                    text-muted-foreground
+                    mt-1
+                  "
+                >
                   {editingUser
                     ? "Update account details, role or password."
                     : "Create a new StreamForge user account."}
                 </div>
+
               </div>
+
 
               <button
                 type="button"
-                onClick={closeForm}
+                onClick={
+                  closeForm
+                }
                 disabled={saving}
                 className="
                   h-9
@@ -1289,83 +2040,150 @@ function UsersPage() {
                   transition
                 "
               >
-                <X className="h-4 w-4" />
+
+                <X
+                  className="
+                    h-4
+                    w-4
+                  "
+                />
+
               </button>
+
             </div>
 
-            {/* MODAL BODY */}
+
+            {/* FORM */}
 
             <form
-              onSubmit={saveUser}
-              className="p-5 space-y-5"
+              onSubmit={
+                saveUser
+              }
+              className="
+                p-5
+                space-y-5
+              "
             >
+
               {/* NAME + USERNAME */}
 
-              <div className="grid sm:grid-cols-2 gap-4">
+              <div
+                className="
+                  grid
+                  sm:grid-cols-2
+                  gap-4
+                "
+              >
+
                 <FormField
                   label="Full name"
                   required
                 >
+
                   <input
-                    value={form.fullName}
-                    onChange={(event) =>
+                    value={
+                      form.fullName
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       updateForm(
                         "fullName",
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     maxLength={100}
                     placeholder="John Doe"
-                    className={inputClass}
+                    className={
+                      inputClass
+                    }
                   />
+
                 </FormField>
+
 
                 <FormField
                   label="Username"
                   required
                 >
+
                   <input
-                    value={form.username}
-                    onChange={(event) =>
+                    value={
+                      form.username
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       updateForm(
                         "username",
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     minLength={3}
                     maxLength={50}
                     placeholder="john.doe"
-                    className={inputClass}
+                    className={
+                      inputClass
+                    }
                   />
+
                 </FormField>
+
               </div>
+
 
               {/* EMAIL + PHONE */}
 
-              <div className="grid sm:grid-cols-2 gap-4">
+              <div
+                className="
+                  grid
+                  sm:grid-cols-2
+                  gap-4
+                "
+              >
+
                 <FormField
                   label="Email"
                   required
                 >
+
                   <input
                     type="email"
-                    value={form.email}
-                    onChange={(event) =>
+                    value={
+                      form.email
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       updateForm(
                         "email",
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     placeholder="john@example.com"
-                    className={inputClass}
+                    className={
+                      inputClass
+                    }
                   />
+
                 </FormField>
 
-                <FormField label="Phone">
+
+                <FormField
+                  label="Phone"
+                >
+
                   <input
                     inputMode="numeric"
-                    value={form.phone}
-                    onChange={(event) =>
+                    value={
+                      form.phone
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       updateForm(
                         "phone",
                         event.target.value.replace(
@@ -1376,14 +2194,26 @@ function UsersPage() {
                     }
                     maxLength={10}
                     placeholder="9876543210"
-                    className={inputClass}
+                    className={
+                      inputClass
+                    }
                   />
+
                 </FormField>
+
               </div>
+
 
               {/* PASSWORD + ROLE */}
 
-              <div className="grid sm:grid-cols-2 gap-4">
+              <div
+                className="
+                  grid
+                  sm:grid-cols-2
+                  gap-4
+                "
+              >
+
                 <FormField
                   label={
                     editingUser
@@ -1394,13 +2224,19 @@ function UsersPage() {
                     !editingUser
                   }
                 >
+
                   <input
                     type="password"
-                    value={form.password}
-                    onChange={(event) =>
+                    value={
+                      form.password
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       updateForm(
                         "password",
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     minLength={6}
@@ -1410,30 +2246,45 @@ function UsersPage() {
                         ? "Leave blank to keep current"
                         : "Minimum 6 characters"
                     }
-                    className={inputClass}
+                    className={
+                      inputClass
+                    }
                   />
+
                 </FormField>
+
 
                 <FormField
                   label="Role"
                   required
                 >
+
                   <select
-                    value={form.roleId}
-                    onChange={(event) =>
+                    value={
+                      form.roleId
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       updateForm(
                         "roleId",
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
-                    className={inputClass}
+                    className={
+                      inputClass
+                    }
                   >
+
                     <option value="">
                       Select role
                     </option>
 
+
                     {roles.map(
                       (role) => (
+
                         <option
                           key={
                             role.roleId
@@ -1446,56 +2297,97 @@ function UsersPage() {
                             role.roleName
                           )}
                         </option>
+
                       )
                     )}
+
                   </select>
+
                 </FormField>
+
               </div>
+
 
               {/* EMPLOYEE CODE */}
 
-              <FormField label="Employee code">
+              <FormField
+                label="Employee code"
+              >
+
                 <input
                   value={
                     form.employeeCode
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event
+                  ) =>
                     updateForm(
                       "employeeCode",
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
                   maxLength={50}
                   placeholder="EMP-001"
-                  className={inputClass}
+                  className={
+                    inputClass
+                  }
                 />
+
               </FormField>
+
 
               {/* BIO */}
 
-              <FormField label="Bio">
+              <FormField
+                label="Bio"
+              >
+
                 <textarea
-                  value={form.bio}
-                  onChange={(event) =>
+                  value={
+                    form.bio
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     updateForm(
                       "bio",
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
                   maxLength={500}
                   rows={4}
                   placeholder="Short description..."
-                  className={`${inputClass} py-3 resize-none`}
+                  className={`
+                    ${inputClass}
+                    py-3
+                    resize-none
+                  `}
                 />
 
-                <div className="mt-1 text-right text-[10px] text-muted-foreground">
-                  {form.bio.length}/500
+
+                <div
+                  className="
+                    mt-1
+                    text-right
+                    text-[10px]
+                    text-muted-foreground
+                  "
+                >
+                  {
+                    form.bio.length
+                  }
+                  /500
                 </div>
+
               </FormField>
+
 
               {/* FORM ERROR */}
 
               {error && (
+
                 <div
                   className="
                     rounded-xl
@@ -1509,7 +2401,9 @@ function UsersPage() {
                 >
                   {error}
                 </div>
+
               )}
+
 
               {/* ACTIONS */}
 
@@ -1521,10 +2415,15 @@ function UsersPage() {
                   gap-2
                 "
               >
+
                 <button
                   type="button"
-                  onClick={closeForm}
-                  disabled={saving}
+                  onClick={
+                    closeForm
+                  }
+                  disabled={
+                    saving
+                  }
                   className="
                     h-10
                     px-4
@@ -1539,9 +2438,12 @@ function UsersPage() {
                   Cancel
                 </button>
 
+
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={
+                    saving
+                  }
                   className="
                     h-10
                     px-5
@@ -1558,28 +2460,54 @@ function UsersPage() {
                     disabled:opacity-60
                   "
                 >
+
                   {saving ? (
+
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2
+                        className="
+                          h-4
+                          w-4
+                          animate-spin
+                        "
+                      />
+
                       Saving...
                     </>
+
                   ) : (
+
                     <>
-                      <Save className="h-4 w-4" />
+                      <Save
+                        className="
+                          h-4
+                          w-4
+                        "
+                      />
+
                       {editingUser
                         ? "Update user"
                         : "Create user"}
                     </>
+
                   )}
+
                 </button>
+
               </div>
+
             </form>
+
           </div>
+
         </div>
+
       )}
+
     </DashboardLayout>
   );
 }
+
 
 /* =========================================================
    FORM FIELD
@@ -1591,11 +2519,19 @@ function FormField({
   children,
 }: {
   label: string;
+
   required?: boolean;
-  children: React.ReactNode;
+
+  children: ReactNode;
 }) {
+
   return (
-    <label className="block">
+    <label
+      className="
+        block
+      "
+    >
+
       <div
         className="
           mb-1.5
@@ -1606,22 +2542,34 @@ function FormField({
           text-muted-foreground
         "
       >
+
         {label}
 
         {required && (
-          <span className="text-destructive ml-1">
+
+          <span
+            className="
+              text-destructive
+              ml-1
+            "
+          >
             *
           </span>
+
         )}
+
       </div>
 
+
       {children}
+
     </label>
   );
 }
 
+
 /* =========================================================
-   INPUT STYLE
+   INPUT CLASS
 ========================================================= */
 
 const inputClass = `
@@ -1638,16 +2586,19 @@ const inputClass = `
   focus:ring-ring
 `;
 
+
 /* =========================================================
    ROLE FORMATTER
 ========================================================= */
 
 function formatRoleName(
   roleName?: string
-) {
+): string {
+
   if (!roleName) {
     return "No role";
   }
+
 
   return roleName
     .toLowerCase()
@@ -1660,28 +2611,41 @@ function formatRoleName(
     .join(" ");
 }
 
+
 /* =========================================================
    INITIALS
 ========================================================= */
 
 function getInitials(
   name?: string
-) {
+): string {
+
   if (!name) {
     return "?";
   }
 
-  const parts =
-    name.trim().split(/\s+/);
 
-  if (parts.length === 1) {
+  const parts =
+    name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+
+  if (
+    parts.length === 1
+  ) {
+
     return parts[0]
       .slice(0, 2)
       .toUpperCase();
   }
 
+
   return (
     parts[0].charAt(0) +
-    parts[parts.length - 1].charAt(0)
+    parts[
+      parts.length - 1
+    ].charAt(0)
   ).toUpperCase();
 }

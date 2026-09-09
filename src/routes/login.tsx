@@ -1,160 +1,343 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Clapperboard, Eye, EyeOff, Github } from "lucide-react";
-import { useState, type ReactNode, type FormEvent } from "react";
-import { apiRequest } from "../api/client";
+import {
+  createFileRoute,
+  Link,
+  useNavigate,
+} from "@tanstack/react-router";
 
-export const Route = createFileRoute("/login")({
-  component: LoginPage,
-});
+import {
+  Clapperboard,
+  Eye,
+  EyeOff,
+  Github,
+} from "lucide-react";
+
+import {
+  useState,
+  type ReactNode,
+  type FormEvent,
+} from "react";
+
+import {
+  apiRequest,
+} from "@/api/client";
+
+import {
+  clearAuthStorage,
+  notifyAuthChanged,
+} from "@/lib/auth";
+
+export const Route =
+  createFileRoute("/login")({
+    component: LoginPage,
+  });
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 interface LoginUser {
   userId?: number;
+
   fullName?: string;
+
   username?: string;
+
   email?: string;
+
   phone?: string;
+
   employeeCode?: string;
+
   bio?: string;
+
+  isActive?: boolean;
+
   role?:
     | string
     | {
         roleId?: number;
+
         roleName?: string;
+
         description?: string;
       };
 }
 
 interface LoginResponse {
   accessToken: string;
+
+  refreshToken?: string;
+
   user: LoginUser;
 }
 
+/* =========================================================
+   LOGIN PAGE
+========================================================= */
+
 function LoginPage() {
-  const navigate = useNavigate();
 
-  const [showPassword, setShowPassword] = useState(false);
+  const navigate =
+    useNavigate();
 
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123");
+  const [
+    showPassword,
+    setShowPassword,
+  ] = useState(false);
 
-  const [rememberMe, setRememberMe] = useState(true);
+  /*
+   * IMPORTANT:
+   * Do NOT hardcode admin credentials.
+   *
+   * Every user must login using
+   * their own username/email + password.
+   */
+  const [
+    username,
+    setUsername,
+  ] = useState("");
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [
+    password,
+    setPassword,
+  ] = useState("");
 
-  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
+  const [
+    rememberMe,
+    setRememberMe,
+  ] = useState(true);
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+  /* =======================================================
+     LOGIN
+  ======================================================= */
+
+  const handleLogin = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
+
     event.preventDefault();
 
     setError("");
 
-    if (!username.trim()) {
-      setError("Username is required.");
+    const credential =
+      username.trim();
+
+    if (!credential) {
+
+      setError(
+        "Username or email is required."
+      );
+
       return;
     }
 
     if (!password) {
-      setError("Password is required.");
+
+      setError(
+        "Password is required."
+      );
+
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await apiRequest<LoginResponse>(
-        "/api/auth/login",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            username: username.trim(),
-            password,
-          }),
-        }
-      );
-
-      console.log("Login response:", response);
 
       /*
-       * Backend LoginResponse:
+       * -----------------------------------------------------
+       * BACKEND LOGIN
+       * -----------------------------------------------------
        *
-       * {
-       *   "accessToken": "eyJ...",
-       *   "user": {
-       *      ...
-       *   }
-       * }
+       * Backend accepts username or email.
        */
 
-      if (!response?.accessToken) {
+      const response =
+        await apiRequest<LoginResponse>(
+          "/api/auth/login",
+          {
+            method: "POST",
+
+            body: JSON.stringify({
+              username: credential,
+              password,
+            }),
+          }
+        );
+
+      if (
+        !response ||
+        !response.accessToken
+      ) {
+
         throw new Error(
           "Login succeeded but no authentication token was returned."
         );
       }
 
-      // --------------------------------------------------
-      // Store JWT
-      // --------------------------------------------------
+      /*
+       * -----------------------------------------------------
+       * CLEAR PREVIOUS ACCOUNT
+       * -----------------------------------------------------
+       *
+       * This is VERY important.
+       *
+       * Example:
+       *
+       * Previous user = ADMIN
+       * New user      = CREATOR
+       *
+       * Old ADMIN data must not remain in browser storage.
+       */
 
-      const storage = rememberMe
-        ? localStorage
-        : sessionStorage;
+      clearAuthStorage();
+
+      /*
+       * -----------------------------------------------------
+       * SELECT STORAGE
+       * -----------------------------------------------------
+       *
+       * Remember me:
+       * localStorage
+       *
+       * Otherwise:
+       * sessionStorage
+       */
+
+      const storage =
+        rememberMe
+          ? localStorage
+          : sessionStorage;
+
+      /*
+       * -----------------------------------------------------
+       * ACCESS TOKEN
+       * -----------------------------------------------------
+       */
 
       storage.setItem(
         "streamforge_token",
         response.accessToken
       );
 
-      // Also remove an old token from the other storage
-      if (rememberMe) {
-        sessionStorage.removeItem("streamforge_token");
-      } else {
-        localStorage.removeItem("streamforge_token");
+      /*
+       * -----------------------------------------------------
+       * REFRESH TOKEN
+       * -----------------------------------------------------
+       *
+       * Store only if backend actually returns one.
+       */
+
+      if (
+        response.refreshToken
+      ) {
+
+        storage.setItem(
+          "streamforge_refresh_token",
+          response.refreshToken
+        );
       }
 
-      // --------------------------------------------------
-      // Store user
-      // --------------------------------------------------
+      /*
+       * -----------------------------------------------------
+       * USER
+       * -----------------------------------------------------
+       */
 
       if (response.user) {
+
         storage.setItem(
           "streamforge_user",
-          JSON.stringify(response.user)
+          JSON.stringify(
+            response.user
+          )
         );
 
-        if (response.user.username) {
+        /*
+         * Username
+         */
+
+        if (
+          response.user.username
+        ) {
+
           storage.setItem(
             "streamforge_username",
             response.user.username
           );
         }
 
-        if (response.user.email) {
+        /*
+         * Email
+         */
+
+        if (
+          response.user.email
+        ) {
+
           storage.setItem(
             "streamforge_email",
             response.user.email
           );
         }
 
-        if (response.user.userId !== undefined) {
+        /*
+         * User ID
+         */
+
+        if (
+          response.user.userId !==
+          undefined
+        ) {
+
           storage.setItem(
             "streamforge_user_id",
-            String(response.user.userId)
+            String(
+              response.user.userId
+            )
           );
         }
 
-        // --------------------------------------------------
-        // Extract role
-        // --------------------------------------------------
+        /*
+         * ---------------------------------------------------
+         * ACTUAL ROLE FROM BACKEND
+         * ---------------------------------------------------
+         */
 
         let role = "";
 
-        if (typeof response.user.role === "string") {
-          role = response.user.role;
-        } else if (response.user.role?.roleName) {
-          role = response.user.role.roleName;
+        if (
+          typeof response.user.role ===
+          "string"
+        ) {
+
+          role =
+            response.user.role;
+
+        } else if (
+          response.user.role?.roleName
+        ) {
+
+          role =
+            response.user.role.roleName;
         }
 
+        role =
+          role
+            .trim()
+            .toUpperCase();
+
         if (role) {
-          role = role.toUpperCase();
 
           storage.setItem(
             "streamforge_role",
@@ -162,38 +345,80 @@ function LoginPage() {
           );
         }
 
-        console.log("Logged-in user:", response.user);
-        console.log("User role:", role);
+        console.log(
+          "Authenticated user:",
+          response.user
+        );
+
+        console.log(
+          "Authenticated role:",
+          role
+        );
       }
 
-      // --------------------------------------------------
-      // Successful login
-      // --------------------------------------------------
+      /*
+       * -----------------------------------------------------
+       * INFORM ROLE PROVIDER
+       * -----------------------------------------------------
+       */
+
+      notifyAuthChanged();
+
+      /*
+       * -----------------------------------------------------
+       * GO TO DASHBOARD
+       * -----------------------------------------------------
+       *
+       * We don't navigate to an arbitrary role selected
+       * by the frontend.
+       *
+       * The dashboard reads the actual authenticated role.
+       */
 
       await navigate({
         to: "/dashboard",
+        replace: true,
       });
-    } catch (err) {
-      console.error("Login failed:", err);
 
-      if (err instanceof Error) {
+    } catch (err) {
+
+      console.error(
+        "Login failed:",
+        err
+      );
+
+      if (
+        err instanceof Error &&
+        err.message
+      ) {
+
         setError(
-          err.message || "Invalid username or password."
+          err.message
         );
+
       } else {
-        setError("Invalid username or password.");
+
+        setError(
+          "Invalid username or password."
+        );
       }
+
     } finally {
+
       setLoading(false);
     }
   };
+
+  /* =======================================================
+     UI
+  ======================================================= */
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-background">
 
       {/* ==================================================
-          LEFT SIDE - CINEMATIC IMAGE
-          ================================================== */}
+          LEFT SIDE
+      ================================================== */}
 
       <div className="relative hidden lg:block overflow-hidden">
 
@@ -218,10 +443,13 @@ function LoginPage() {
           <div className="flex items-center gap-2">
 
             <div className="h-9 w-9 grid place-items-center rounded-xl bg-primary shadow-[var(--shadow-glow)]">
+
               <Clapperboard className="h-5 w-5 text-primary-foreground" />
+
             </div>
 
             <div className="leading-tight">
+
               <div className="text-sm font-bold tracking-wide">
                 NETFLIX
               </div>
@@ -229,6 +457,7 @@ function LoginPage() {
               <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                 Show Manager
               </div>
+
             </div>
 
           </div>
@@ -251,10 +480,9 @@ function LoginPage() {
         </div>
       </div>
 
-
       {/* ==================================================
-          RIGHT SIDE - LOGIN FORM
-          ================================================== */}
+          RIGHT SIDE
+      ================================================== */}
 
       <div className="flex items-center justify-center p-6 md:p-10">
 
@@ -265,7 +493,9 @@ function LoginPage() {
           <div className="lg:hidden flex items-center gap-2 mb-8">
 
             <div className="h-9 w-9 grid place-items-center rounded-xl bg-primary">
-              <Clapperboard className="h-5 w-5" />
+
+              <Clapperboard className="h-5 w-5 text-primary-foreground" />
+
             </div>
 
             <div className="text-sm font-bold">
@@ -273,7 +503,6 @@ function LoginPage() {
             </div>
 
           </div>
-
 
           {/* Heading */}
 
@@ -285,6 +514,9 @@ function LoginPage() {
             Sign in to your studio workspace.
           </p>
 
+          {/* =================================================
+              FORM
+          ================================================= */}
 
           <form
             onSubmit={handleLogin}
@@ -298,11 +530,12 @@ function LoginPage() {
               disabled={loading}
               className="w-full h-11 rounded-xl border border-border hover:bg-accent transition flex items-center justify-center gap-2 text-sm disabled:opacity-50"
             >
+
               <Github className="h-4 w-4" />
 
               Continue with SSO
-            </button>
 
+            </button>
 
             {/* Divider */}
 
@@ -310,32 +543,36 @@ function LoginPage() {
 
               <div className="h-px flex-1 bg-border" />
 
-              <span>or with email</span>
+              <span>
+                or with username / email
+              </span>
 
               <div className="h-px flex-1 bg-border" />
 
             </div>
 
+            {/* Username / Email */}
 
-            {/* Username */}
-
-            <Field label="Username">
+            <Field label="Username or email">
 
               <input
                 type="text"
                 value={username}
                 onChange={(event) => {
-                  setUsername(event.target.value);
+
+                  setUsername(
+                    event.target.value
+                  );
+
                   setError("");
                 }}
                 autoComplete="username"
-                placeholder="Enter your username"
+                placeholder="Enter username or email"
                 disabled={loading}
                 className="input"
               />
 
             </Field>
-
 
             {/* Password */}
 
@@ -361,7 +598,11 @@ function LoginPage() {
                   }
                   value={password}
                   onChange={(event) => {
-                    setPassword(event.target.value);
+
+                    setPassword(
+                      event.target.value
+                    );
+
                     setError("");
                   }}
                   autoComplete="current-password"
@@ -374,7 +615,8 @@ function LoginPage() {
                   type="button"
                   onClick={() =>
                     setShowPassword(
-                      (current) => !current
+                      (current) =>
+                        !current
                     )
                   }
                   disabled={loading}
@@ -398,7 +640,6 @@ function LoginPage() {
 
             </Field>
 
-
             {/* Remember me */}
 
             <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
@@ -419,7 +660,6 @@ function LoginPage() {
 
             </label>
 
-
             {/* Error */}
 
             {error && (
@@ -431,7 +671,6 @@ function LoginPage() {
               </div>
             )}
 
-
             {/* Sign in */}
 
             <button
@@ -441,6 +680,7 @@ function LoginPage() {
             >
 
               {loading ? (
+
                 <div className="flex items-center gap-2">
 
                   <span className="h-4 w-4 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin" />
@@ -448,12 +688,14 @@ function LoginPage() {
                   Signing in...
 
                 </div>
+
               ) : (
+
                 "Sign in"
+
               )}
 
             </button>
-
 
             {/* Register */}
 
@@ -476,10 +718,9 @@ function LoginPage() {
 
       </div>
 
-
       {/* ==================================================
           INPUT STYLES
-          ================================================== */}
+      ================================================== */}
 
       <style>
         {`
@@ -518,10 +759,9 @@ function LoginPage() {
   );
 }
 
-
-/* ======================================================
-   FIELD COMPONENT
-   ====================================================== */
+/* =========================================================
+   FIELD
+========================================================= */
 
 function Field({
   label,
@@ -529,9 +769,12 @@ function Field({
   children,
 }: {
   label: string;
+
   trailing?: ReactNode;
+
   children: ReactNode;
 }) {
+
   return (
     <label className="block">
 
