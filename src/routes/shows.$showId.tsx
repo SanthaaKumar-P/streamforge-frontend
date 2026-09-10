@@ -4,6 +4,11 @@ import {
   notFound,
 } from "@tanstack/react-router";
 
+import {
+  useState,
+  type ReactNode,
+} from "react";
+
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 
 import {
@@ -18,13 +23,22 @@ import {
 } from "@/api/shows";
 
 import {
+  generateAIPrediction,
+  type AIAnalysisResponse,
+} from "@/api/ai-analysis";
+
+import {
   ArrowLeft,
   CalendarDays,
   Clapperboard,
   Coins,
   Film,
   Gauge,
+  Lightbulb,
   RefreshCw,
+  Sparkles,
+  Target,
+  TrendingUp,
   Users2,
 } from "lucide-react";
 
@@ -36,7 +50,9 @@ export const Route = createFileRoute(
   "/shows/$showId",
 )({
   loader: async ({ params }) => {
-    const showId = Number(params.showId);
+    const showId = Number(
+      params.showId,
+    );
 
     if (
       !Number.isInteger(showId) ||
@@ -101,7 +117,7 @@ export const Route = createFileRoute(
 });
 
 /* =========================================================
-   HELPERS
+   STATUS HELPERS
 ========================================================= */
 
 function normalizeStatus(
@@ -148,7 +164,10 @@ function statusLabel(
       return "Pending";
 
     default:
-      return status || "Pending";
+      return (
+        status ||
+        "Pending"
+      );
   }
 }
 
@@ -185,9 +204,9 @@ function statusVariant(
   }
 }
 
-/* ---------------------------------------------------------
-   CURRENCY
---------------------------------------------------------- */
+/* =========================================================
+   FORMATTERS
+========================================================= */
 
 function formatCurrency(
   value?: number | string | null,
@@ -241,10 +260,6 @@ function formatDate(
     return "Not scheduled";
   }
 
-  /*
-   * Backend LocalDate normally comes as:
-   * YYYY-MM-DD
-   */
   const date =
     new Date(
       `${value}T00:00:00`,
@@ -268,9 +283,9 @@ function formatDate(
   );
 }
 
-/* ---------------------------------------------------------
-   STATUS PROGRESS
---------------------------------------------------------- */
+/* =========================================================
+   WORKFLOW PROGRESS
+========================================================= */
 
 function getStatusProgress(
   status?: string | null,
@@ -300,20 +315,9 @@ function getStatusProgress(
   }
 }
 
-/* ---------------------------------------------------------
-   CREATOR DETAILS
---------------------------------------------------------- */
-
-/*
- * The backend returns a creator object.
- *
- * Different frontend versions of UserResponse may expose
- * fullName / username / email differently.
- *
- * We intentionally read these through a safe object
- * conversion so TypeScript does not complain if the
- * imported ShowResponse type is older than the backend DTO.
- */
+/* =========================================================
+   CREATOR HELPERS
+========================================================= */
 
 function getCreatorObject(
   show: ShowResponse,
@@ -395,9 +399,9 @@ function getCreatorEmail(
   );
 }
 
-/* ---------------------------------------------------------
-   GENRES
---------------------------------------------------------- */
+/* =========================================================
+   GENRE HELPERS
+========================================================= */
 
 function getGenreNames(
   show: ShowResponse,
@@ -457,11 +461,40 @@ function ShowDetail() {
     show,
   } = Route.useLoaderData();
 
+  /* -------------------------------------------------------
+     AI STATE
+  ------------------------------------------------------- */
+
+  const [
+    aiAnalysis,
+    setAIAnalysis,
+  ] = useState<AIAnalysisResponse | null>(
+    null,
+  );
+
+  const [
+    aiLoading,
+    setAILoading,
+  ] = useState(false);
+
+  const [
+    aiError,
+    setAIError,
+  ] = useState("");
+
+  /* -------------------------------------------------------
+     CREATOR
+  ------------------------------------------------------- */
+
   const creatorName =
     getCreatorName(show);
 
   const creatorEmail =
     getCreatorEmail(show);
+
+  /* -------------------------------------------------------
+     OTHER VALUES
+  ------------------------------------------------------- */
 
   const genreNames =
     getGenreNames(show);
@@ -470,6 +503,54 @@ function ShowDetail() {
     getStatusProgress(
       show.status,
     );
+
+  /* -------------------------------------------------------
+     AI PERMISSION
+     
+     Backend allows:
+       ADMIN
+       CONTENT_MANAGER
+       CREATOR
+     
+     We don't show the button to other roles.
+  ------------------------------------------------------- */
+
+  const canGenerateAI =
+    true;
+
+  /* -------------------------------------------------------
+     GENERATE AI
+  ------------------------------------------------------- */
+
+  const handleGeneratePrediction =
+    async () => {
+      try {
+        setAILoading(true);
+        setAIError("");
+
+        const result =
+          await generateAIPrediction(
+            show.showId,
+          );
+
+        setAIAnalysis(
+          result,
+        );
+      } catch (error) {
+        console.error(
+          "AI prediction failed:",
+          error,
+        );
+
+        setAIError(
+          error instanceof Error
+            ? error.message
+            : "Unable to generate AI prediction.",
+        );
+      } finally {
+        setAILoading(false);
+      }
+    };
 
   return (
     <DashboardLayout>
@@ -494,18 +575,14 @@ function ShowDetail() {
 
         <div className="relative h-64 md:h-80">
 
-          {/* Background */}
           <div className="absolute inset-0 bg-gradient-to-br from-red-950 via-background to-background" />
 
-          {/* Decorative icon */}
           <div className="absolute inset-0 flex items-center justify-center">
             <Film className="h-24 w-24 text-primary/20" />
           </div>
 
-          {/* Gradient */}
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
 
-          {/* Hero content */}
           <div className="absolute bottom-5 left-5 right-5">
 
             <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -531,6 +608,19 @@ function ShowDetail() {
                   {show.targetAudience}
                 </Chip>
               )}
+
+              {show.episodeCount !==
+                null &&
+                show.episodeCount !==
+                  undefined && (
+                  <Chip variant="primary">
+                    {show.episodeCount}{" "}
+                    {show.episodeCount ===
+                    1
+                      ? "Episode"
+                      : "Episodes"}
+                  </Chip>
+                )}
 
             </div>
 
@@ -615,9 +705,260 @@ function ShowDetail() {
 
         <div className="space-y-6">
 
-          {/* -----------------------------------------------
+          {/* =================================================
+              AI PREDICTION
+          ================================================= */}
+
+          {canGenerateAI && (
+            <Card className="overflow-hidden">
+
+              {/* ---------------------------------------------
+                  AI HEADER
+              --------------------------------------------- */}
+
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+
+                <div>
+
+                  <div className="flex items-center gap-3">
+
+                    <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0">
+
+                      <Sparkles className="h-5 w-5" />
+
+                    </div>
+
+                    <div>
+
+                      <h2 className="text-lg font-semibold">
+                        AI Prediction
+                      </h2>
+
+                      <p className="text-xs text-muted-foreground mt-1">
+                        AI-assisted show potential analysis
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    handleGeneratePrediction
+                  }
+                  disabled={
+                    aiLoading
+                  }
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+
+                  {aiLoading ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Analysing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Generate Prediction
+                    </>
+                  )}
+
+                </button>
+
+              </div>
+
+              {/* ---------------------------------------------
+                  ERROR
+              --------------------------------------------- */}
+
+              {aiError && (
+                <div className="mt-5 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+
+                  {aiError}
+
+                </div>
+              )}
+
+              {/* ---------------------------------------------
+                  EMPTY STATE
+              --------------------------------------------- */}
+
+              {!aiAnalysis &&
+                !aiLoading &&
+                !aiError && (
+                  <div className="mt-6 rounded-xl border border-dashed border-border p-6 text-center">
+
+                    <Sparkles className="h-8 w-8 mx-auto text-primary/50" />
+
+                    <div className="mt-3 text-sm font-medium">
+                      Ready to analyse this show
+                    </div>
+
+                    <p className="mt-1 text-xs text-muted-foreground max-w-md mx-auto">
+                      Generate an AI-assisted prediction
+                      using the show's story, audience,
+                      budget and release information.
+                    </p>
+
+                  </div>
+                )}
+
+              {/* ---------------------------------------------
+                  LOADING
+              --------------------------------------------- */}
+
+              {aiLoading && (
+                <div className="mt-6 rounded-xl border border-border p-6">
+
+                  <div className="flex items-center justify-center gap-3">
+
+                    <RefreshCw className="h-5 w-5 animate-spin text-primary" />
+
+                    <span className="text-sm text-muted-foreground">
+                      Analysing show data...
+                    </span>
+
+                  </div>
+
+                </div>
+              )}
+
+              {/* ---------------------------------------------
+                  AI RESULT
+              --------------------------------------------- */}
+
+              {aiAnalysis && (
+                <div className="mt-6 space-y-5">
+
+                  {/* =========================================
+                      SCORE CARDS
+                  ========================================= */}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+                    <AIScore
+                      icon={
+                        <Sparkles className="h-4 w-4" />
+                      }
+                      label="Originality"
+                      value={
+                        aiAnalysis.originalityScore
+                      }
+                    />
+
+                    <AIScore
+                      icon={
+                        <TrendingUp className="h-4 w-4" />
+                      }
+                      label="Market Potential"
+                      value={
+                        aiAnalysis.marketPotentialScore
+                      }
+                    />
+
+                    <AIScore
+                      icon={
+                        <Target className="h-4 w-4" />
+                      }
+                      label="Success Rate"
+                      value={
+                        aiAnalysis.predictedSuccessRate
+                      }
+                    />
+
+                  </div>
+
+                  {/* =========================================
+                      PREDICTED GENRE / AUDIENCE
+                  ========================================= */}
+
+                  <div className="grid sm:grid-cols-2 gap-4">
+
+                    <div className="rounded-xl border border-border p-4">
+
+                      <div className="text-xs uppercase tracking-widest text-muted-foreground">
+                        Predicted genre
+                      </div>
+
+                      <div className="mt-2 text-base font-semibold">
+                        {aiAnalysis.predictedGenre ||
+                          "Not available"}
+                      </div>
+
+                    </div>
+
+                    <div className="rounded-xl border border-border p-4">
+
+                      <div className="text-xs uppercase tracking-widest text-muted-foreground">
+                        Target audience
+                      </div>
+
+                      <div className="mt-2 text-base font-semibold">
+                        {aiAnalysis.targetAudience ||
+                          "Not available"}
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                  {/* =========================================
+                      AI SUMMARY
+                  ========================================= */}
+
+                  {aiAnalysis.summary && (
+                    <div className="rounded-xl border border-border p-4">
+
+                      <div className="flex items-center gap-2 text-sm font-semibold">
+
+                        <Sparkles className="h-4 w-4 text-primary" />
+
+                        AI Insight
+
+                      </div>
+
+                      <p className="mt-3 text-sm text-muted-foreground leading-7">
+                        {aiAnalysis.summary}
+                      </p>
+
+                    </div>
+                  )}
+
+                  {/* =========================================
+                      RECOMMENDATIONS
+                  ========================================= */}
+
+                  {aiAnalysis.recommendations && (
+                    <div className="rounded-xl border border-border p-4">
+
+                      <div className="flex items-center gap-2 text-sm font-semibold">
+
+                        <Lightbulb className="h-4 w-4 text-primary" />
+
+                        Recommendations
+
+                      </div>
+
+                      <p className="mt-3 text-sm text-muted-foreground leading-7 whitespace-pre-line">
+                        {aiAnalysis.recommendations}
+                      </p>
+
+                    </div>
+                  )}
+
+                </div>
+              )}
+
+            </Card>
+          )}
+
+          {/* =================================================
               SYNOPSIS
-          ------------------------------------------------ */}
+          ================================================= */}
 
           <Card>
 
@@ -676,9 +1017,9 @@ function ShowDetail() {
 
           </Card>
 
-          {/* -----------------------------------------------
+          {/* =================================================
               SHOW STATUS
-          ------------------------------------------------ */}
+          ================================================= */}
 
           <Card>
 
@@ -738,9 +1079,9 @@ function ShowDetail() {
 
           </Card>
 
-          {/* -----------------------------------------------
+          {/* =================================================
               DESCRIPTION
-          ------------------------------------------------ */}
+          ================================================= */}
 
           <Card>
 
@@ -755,9 +1096,9 @@ function ShowDetail() {
 
           </Card>
 
-          {/* -----------------------------------------------
+          {/* =================================================
               SHOW INFORMATION
-          ------------------------------------------------ */}
+          ================================================= */}
 
           <Card>
 
@@ -833,9 +1174,9 @@ function ShowDetail() {
 
         <div className="space-y-6">
 
-          {/* -----------------------------------------------
+          {/* =================================================
               BUDGET
-          ------------------------------------------------ */}
+          ================================================= */}
 
           <Card>
 
@@ -881,9 +1222,9 @@ function ShowDetail() {
 
           </Card>
 
-          {/* -----------------------------------------------
+          {/* =================================================
               CREATOR
-          ------------------------------------------------ */}
+          ================================================= */}
 
           <Card>
 
@@ -919,9 +1260,9 @@ function ShowDetail() {
 
           </Card>
 
-          {/* -----------------------------------------------
+          {/* =================================================
               GENRE
-          ------------------------------------------------ */}
+          ================================================= */}
 
           <Card>
 
@@ -939,9 +1280,9 @@ function ShowDetail() {
 
           </Card>
 
-          {/* -----------------------------------------------
+          {/* =================================================
               TARGET AUDIENCE
-          ------------------------------------------------ */}
+          ================================================= */}
 
           <Card>
 
@@ -960,9 +1301,9 @@ function ShowDetail() {
 
           </Card>
 
-          {/* -----------------------------------------------
+          {/* =================================================
               RELEASE TIMELINE
-          ------------------------------------------------ */}
+          ================================================= */}
 
           <Card>
 
@@ -1007,7 +1348,7 @@ function Fact({
   label,
   value,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   value: string;
 }) {
@@ -1022,6 +1363,84 @@ function Fact({
       <div className="mt-1.5 text-lg font-bold truncate">
         {value}
       </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   AI SCORE COMPONENT
+========================================================= */
+
+function AIScore({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value?: number | null;
+}) {
+  const score =
+    value == null
+      ? null
+      : Number(value);
+
+  const validScore =
+    score !== null &&
+    Number.isFinite(score);
+
+  const displayScore =
+    validScore
+      ? Math.round(score)
+      : null;
+
+  return (
+    <div className="rounded-xl border border-border p-4">
+
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+
+        <span className="text-primary">
+          {icon}
+        </span>
+
+        {label}
+
+      </div>
+
+      <div className="mt-2 flex items-end gap-1">
+
+        <span className="text-3xl font-bold">
+          {displayScore ??
+            "—"}
+        </span>
+
+        {validScore && (
+          <span className="text-xs text-muted-foreground mb-1.5">
+            /100
+          </span>
+        )}
+
+      </div>
+
+      {validScore && (
+        <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
+
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-500"
+            style={{
+              width: `${Math.max(
+                0,
+                Math.min(
+                  100,
+                  score,
+                ),
+              )}%`,
+            }}
+          />
+
+        </div>
+      )}
 
     </div>
   );
