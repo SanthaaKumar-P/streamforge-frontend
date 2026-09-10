@@ -5,7 +5,12 @@ import {
 } from "@tanstack/react-router";
 
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Card, Chip, Progress } from "@/components/ui-kit";
+
+import {
+  Card,
+  Chip,
+  Progress,
+} from "@/components/ui-kit";
 
 import {
   getShowById,
@@ -18,24 +23,41 @@ import {
   Clapperboard,
   Coins,
   Film,
-  Users2,
   Gauge,
-  CheckCircle2,
-  Circle,
   RefreshCw,
+  Users2,
 } from "lucide-react";
 
+/* =========================================================
+   ROUTE
+========================================================= */
+
 export const Route = createFileRoute(
-  "/shows/$showId"
+  "/shows/$showId",
 )({
   loader: async ({ params }) => {
+    const showId = Number(params.showId);
+
+    if (
+      !Number.isInteger(showId) ||
+      showId <= 0
+    ) {
+      throw notFound();
+    }
+
     try {
-      const show = await getShowById(
-        Number(params.showId)
+      const show =
+        await getShowById(showId);
+
+      return {
+        show,
+      };
+    } catch (error) {
+      console.error(
+        "Failed to load show:",
+        error,
       );
 
-      return { show };
-    } catch {
       throw notFound();
     }
   },
@@ -56,12 +78,14 @@ export const Route = createFileRoute(
       };
     }
 
-    const { show } = loaderData;
+    const { show } =
+      loaderData;
 
     return {
       meta: [
         {
-          title: `${show.title} — Netflix Show Manager`,
+          title:
+            `${show.title} — Netflix Show Manager`,
         },
         {
           name: "description",
@@ -76,130 +100,424 @@ export const Route = createFileRoute(
   component: ShowDetail,
 });
 
-function normalizeStatus(status?: string | null) {
-  if (!status) return "PENDING";
+/* =========================================================
+   HELPERS
+========================================================= */
 
-  return status.toUpperCase();
+function normalizeStatus(
+  status?: string | null,
+): string {
+  if (!status) {
+    return "PENDING";
+  }
+
+  return status
+    .toUpperCase()
+    .replace(/[-\s]/g, "_");
 }
 
-function statusLabel(status?: string | null) {
-  switch (normalizeStatus(status)) {
+/* ---------------------------------------------------------
+   STATUS LABEL
+--------------------------------------------------------- */
+
+function statusLabel(
+  status?: string | null,
+): string {
+  switch (
+    normalizeStatus(status)
+  ) {
     case "APPROVED":
       return "Approved";
+
     case "REJECTED":
       return "Rejected";
+
     case "UNDER_REVIEW":
       return "Under Review";
+
     case "IN_PRODUCTION":
       return "In Production";
-    default:
+
+    case "PRODUCTION":
+      return "In Production";
+
+    case "SUBMITTED":
+      return "Submitted";
+
+    case "PENDING":
       return "Pending";
+
+    default:
+      return status || "Pending";
   }
 }
 
+/* ---------------------------------------------------------
+   STATUS VARIANT
+--------------------------------------------------------- */
+
 function statusVariant(
-  status?: string | null
-): "success" | "warning" | "danger" | "info" | "primary" {
-  switch (normalizeStatus(status)) {
+  status?: string | null,
+):
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  | "primary" {
+  switch (
+    normalizeStatus(status)
+  ) {
     case "APPROVED":
       return "success";
+
     case "REJECTED":
       return "danger";
+
     case "UNDER_REVIEW":
       return "warning";
+
     case "IN_PRODUCTION":
+    case "PRODUCTION":
       return "primary";
+
     default:
       return "info";
   }
 }
 
+/* ---------------------------------------------------------
+   CURRENCY
+--------------------------------------------------------- */
+
 function formatCurrency(
-  value?: number | null
-) {
-  if (value == null) return "—";
-
-  if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(1)}M`;
+  value?: number | string | null,
+): string {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return "—";
   }
 
-  if (value >= 1_000) {
-    return `$${(value / 1_000).toFixed(0)}K`;
+  const amount =
+    Number(value);
+
+  if (
+    !Number.isFinite(amount)
+  ) {
+    return "—";
   }
 
-  return `$${value.toLocaleString()}`;
+  if (
+    amount >= 1_000_000
+  ) {
+    return `$${(
+      amount / 1_000_000
+    ).toFixed(1)}M`;
+  }
+
+  if (
+    amount >= 1_000
+  ) {
+    return `$${(
+      amount / 1_000
+    ).toFixed(0)}K`;
+  }
+
+  return `$${amount.toLocaleString(
+    "en-US",
+  )}`;
 }
 
+/* ---------------------------------------------------------
+   DATE
+--------------------------------------------------------- */
+
 function formatDate(
-  value?: string | null
-) {
-  if (!value) return "—";
+  value?: string | null,
+): string {
+  if (!value) {
+    return "Not scheduled";
+  }
 
-  const date = new Date(value);
+  /*
+   * Backend LocalDate normally comes as:
+   * YYYY-MM-DD
+   */
+  const date =
+    new Date(
+      `${value}T00:00:00`,
+    );
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
     return value;
   }
 
-  return date.toLocaleDateString();
+  return date.toLocaleDateString(
+    "en-US",
+    {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    },
+  );
 }
 
+/* ---------------------------------------------------------
+   STATUS PROGRESS
+--------------------------------------------------------- */
+
 function getStatusProgress(
-  status?: string | null
-) {
-  switch (normalizeStatus(status)) {
+  status?: string | null,
+): number {
+  switch (
+    normalizeStatus(status)
+  ) {
     case "APPROVED":
       return 100;
+
     case "IN_PRODUCTION":
+    case "PRODUCTION":
       return 75;
+
     case "UNDER_REVIEW":
       return 50;
+
+    case "SUBMITTED":
+      return 30;
+
     case "REJECTED":
       return 100;
+
+    case "PENDING":
     default:
       return 20;
   }
 }
 
+/* ---------------------------------------------------------
+   CREATOR DETAILS
+--------------------------------------------------------- */
+
+/*
+ * The backend returns a creator object.
+ *
+ * Different frontend versions of UserResponse may expose
+ * fullName / username / email differently.
+ *
+ * We intentionally read these through a safe object
+ * conversion so TypeScript does not complain if the
+ * imported ShowResponse type is older than the backend DTO.
+ */
+
+function getCreatorObject(
+  show: ShowResponse,
+): Record<
+  string,
+  unknown
+> | null {
+  const creator =
+    show.creator;
+
+  if (
+    !creator ||
+    typeof creator !== "object"
+  ) {
+    return null;
+  }
+
+  return creator as unknown as Record<
+    string,
+    unknown
+  >;
+}
+
+function getCreatorName(
+  show: ShowResponse,
+): string {
+  const creator =
+    getCreatorObject(show);
+
+  if (!creator) {
+    return "Unknown creator";
+  }
+
+  const fullName =
+    typeof creator.fullName ===
+    "string"
+      ? creator.fullName.trim()
+      : "";
+
+  const username =
+    typeof creator.username ===
+    "string"
+      ? creator.username.trim()
+      : "";
+
+  const name =
+    typeof creator.name ===
+    "string"
+      ? creator.name.trim()
+      : "";
+
+  return (
+    fullName ||
+    username ||
+    name ||
+    "Unknown creator"
+  );
+}
+
+function getCreatorEmail(
+  show: ShowResponse,
+): string {
+  const creator =
+    getCreatorObject(show);
+
+  if (!creator) {
+    return "No email available";
+  }
+
+  const email =
+    typeof creator.email ===
+    "string"
+      ? creator.email.trim()
+      : "";
+
+  return (
+    email ||
+    "No email available"
+  );
+}
+
+/* ---------------------------------------------------------
+   GENRES
+--------------------------------------------------------- */
+
+function getGenreNames(
+  show: ShowResponse,
+): string {
+  if (
+    !show.genres ||
+    show.genres.length === 0
+  ) {
+    return "Not specified";
+  }
+
+  const names =
+    show.genres
+      .map((genre) => {
+        const item =
+          genre as unknown as Record<
+            string,
+            unknown
+          >;
+
+        if (
+          typeof item.name ===
+          "string"
+        ) {
+          return item.name;
+        }
+
+        if (
+          typeof item.genreName ===
+          "string"
+        ) {
+          return item.genreName;
+        }
+
+        if (
+          typeof item.title ===
+          "string"
+        ) {
+          return item.title;
+        }
+
+        return "";
+      })
+      .filter(Boolean);
+
+  return names.length > 0
+    ? names.join(", ")
+    : "Not specified";
+}
+
+/* =========================================================
+   MAIN PAGE
+========================================================= */
+
 function ShowDetail() {
-  const { show } = Route.useLoaderData();
+  const {
+    show,
+  } = Route.useLoaderData();
 
   const creatorName =
-    show.creator?.fullName ||
-    show.creator?.username ||
-    "Unknown creator";
+    getCreatorName(show);
 
   const creatorEmail =
-    show.creator?.email || "No email available";
+    getCreatorEmail(show);
+
+  const genreNames =
+    getGenreNames(show);
+
+  const progress =
+    getStatusProgress(
+      show.status,
+    );
 
   return (
     <DashboardLayout>
+
+      {/* =====================================================
+          BACK
+      ===================================================== */}
+
       <Link
         to="/shows"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition mb-4"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition mb-5"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to shows
       </Link>
 
+      {/* =====================================================
+          HERO
+      ===================================================== */}
+
       <Card className="!p-0 overflow-hidden mb-6">
+
         <div className="relative h-64 md:h-80">
+
+          {/* Background */}
           <div className="absolute inset-0 bg-gradient-to-br from-red-950 via-background to-background" />
 
+          {/* Decorative icon */}
           <div className="absolute inset-0 flex items-center justify-center">
             <Film className="h-24 w-24 text-primary/20" />
           </div>
 
+          {/* Gradient */}
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
 
+          {/* Hero content */}
           <div className="absolute bottom-5 left-5 right-5">
+
             <div className="flex flex-wrap items-center gap-2 mb-3">
+
               <Chip
                 variant={statusVariant(
-                  show.status
+                  show.status,
                 )}
               >
-                {statusLabel(show.status)}
+                {statusLabel(
+                  show.status,
+                )}
               </Chip>
 
               {show.language && (
@@ -213,6 +531,7 @@ function ShowDetail() {
                   {show.targetAudience}
                 </Chip>
               )}
+
             </div>
 
             <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
@@ -220,34 +539,107 @@ function ShowDetail() {
             </h1>
 
             <p className="text-sm text-muted-foreground mt-2">
-              SH-{show.showId} · created by{" "}
+              SH-{show.showId}
+              {" · "}
+              created by{" "}
               {creatorName}
             </p>
+
           </div>
         </div>
+
       </Card>
 
+      {/* =====================================================
+          QUICK FACTS
+      ===================================================== */}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+
+        <Fact
+          icon={
+            <Coins className="h-4 w-4" />
+          }
+          label="Budget"
+          value={formatCurrency(
+            show.estimatedBudget,
+          )}
+        />
+
+        <Fact
+          icon={
+            <Film className="h-4 w-4" />
+          }
+          label="Episodes"
+          value={
+            show.episodeCount !==
+              null &&
+            show.episodeCount !==
+              undefined
+              ? String(
+                  show.episodeCount,
+                )
+              : "—"
+          }
+        />
+
+        <Fact
+          icon={
+            <Users2 className="h-4 w-4" />
+          }
+          label="Creator"
+          value={creatorName}
+        />
+
+        <Fact
+          icon={
+            <CalendarDays className="h-4 w-4" />
+          }
+          label="Release"
+          value={formatDate(
+            show.expectedReleaseDate,
+          )}
+        />
+
+      </div>
+
+      {/* =====================================================
+          MAIN GRID
+      ===================================================== */}
+
       <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-6">
+
+        {/* ===================================================
+            LEFT COLUMN
+        =================================================== */}
+
         <div className="space-y-6">
+
+          {/* -----------------------------------------------
+              SYNOPSIS
+          ------------------------------------------------ */}
+
           <Card>
+
             <h2 className="text-lg font-semibold mb-2">
               Synopsis
             </h2>
 
-            <p className="text-sm text-muted-foreground leading-6">
+            <p className="text-sm text-muted-foreground leading-7 whitespace-pre-wrap">
               {show.synopsis ||
                 show.description ||
                 "No synopsis has been added yet."}
             </p>
 
             <div className="grid sm:grid-cols-2 gap-4 mt-6">
+
               <Fact
                 icon={
                   <Coins className="h-4 w-4" />
                 }
                 label="Estimated budget"
                 value={formatCurrency(
-                  show.estimatedBudget
+                  show.estimatedBudget,
                 )}
               />
 
@@ -257,7 +649,7 @@ function ShowDetail() {
                 }
                 label="Expected release"
                 value={formatDate(
-                  show.expectedReleaseDate
+                  show.expectedReleaseDate,
                 )}
               />
 
@@ -274,123 +666,107 @@ function ShowDetail() {
                   <Film className="h-4 w-4" />
                 }
                 label="Language"
-                value={show.language || "—"}
+                value={
+                  show.language ||
+                  "Not specified"
+                }
               />
+
             </div>
+
           </Card>
 
+          {/* -----------------------------------------------
+              SHOW STATUS
+          ------------------------------------------------ */}
+
           <Card>
+
             <h2 className="text-lg font-semibold mb-5">
               Show status
             </h2>
 
             <div className="space-y-4">
+
               <div>
+
                 <div className="flex justify-between text-xs mb-2">
+
                   <span className="text-muted-foreground">
-                    Current progress
+                    Current workflow progress
                   </span>
 
                   <span className="font-medium">
-                    {getStatusProgress(
-                      show.status
-                    )}
-                    %
+                    {progress}%
                   </span>
+
                 </div>
 
                 <Progress
-                  value={getStatusProgress(
-                    show.status
-                  )}
+                  value={
+                    progress
+                  }
                 />
+
               </div>
 
               <div className="flex items-center gap-3 rounded-xl border border-border p-4">
-                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
+
+                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0">
+
                   <RefreshCw className="h-5 w-5" />
+
                 </div>
 
                 <div>
+
                   <div className="text-sm font-medium">
-                    {statusLabel(show.status)}
+                    {statusLabel(
+                      show.status,
+                    )}
                   </div>
 
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-xs text-muted-foreground mt-1">
                     Current workflow status
                   </div>
+
                 </div>
+
               </div>
+
             </div>
+
           </Card>
 
+          {/* -----------------------------------------------
+              DESCRIPTION
+          ------------------------------------------------ */}
+
           <Card>
-            <h2 className="text-lg font-semibold mb-5">
+
+            <h2 className="text-lg font-semibold mb-4">
               Description
             </h2>
 
-            <p className="text-sm text-muted-foreground leading-6">
+            <p className="text-sm text-muted-foreground leading-7 whitespace-pre-wrap">
               {show.description ||
                 "No description has been added for this show."}
             </p>
-          </Card>
-        </div>
 
-        <div className="space-y-6">
-          <Card>
-            <div className="flex items-center gap-2 text-sm font-semibold mb-4">
-              <Gauge className="h-4 w-4 text-primary" />
-              Budget overview
-            </div>
-
-            <div className="text-3xl font-bold">
-              {formatCurrency(
-                show.estimatedBudget
-              )}
-            </div>
-
-            <div className="text-xs text-muted-foreground mt-1">
-              Estimated production budget
-            </div>
-
-            <div className="mt-5">
-              <Progress
-                value={getStatusProgress(
-                  show.status
-                )}
-              />
-            </div>
           </Card>
 
-          <Card>
-            <div className="flex items-center gap-2 text-sm font-semibold mb-4">
-              <Clapperboard className="h-4 w-4 text-primary" />
-              Creator
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="h-11 w-11 rounded-full bg-primary/10 text-primary grid place-items-center">
-                <Users2 className="h-5 w-5" />
-              </div>
-
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">
-                  {creatorName}
-                </div>
-
-                <div className="text-xs text-muted-foreground truncate">
-                  {creatorEmail}
-                </div>
-              </div>
-            </div>
-          </Card>
+          {/* -----------------------------------------------
+              SHOW INFORMATION
+          ------------------------------------------------ */}
 
           <Card>
-            <div className="text-sm font-semibold mb-3">
+
+            <h2 className="text-lg font-semibold mb-4">
               Show information
-            </div>
+            </h2>
 
             <div className="space-y-3 text-sm">
+
               <InfoRow
                 label="Show ID"
                 value={`SH-${show.showId}`}
@@ -399,14 +775,20 @@ function ShowDetail() {
               <InfoRow
                 label="Status"
                 value={statusLabel(
-                  show.status
+                  show.status,
                 )}
+              />
+
+              <InfoRow
+                label="Genre"
+                value={genreNames}
               />
 
               <InfoRow
                 label="Language"
                 value={
-                  show.language || "Not specified"
+                  show.language ||
+                  "Not specified"
                 }
               />
 
@@ -419,18 +801,206 @@ function ShowDetail() {
               />
 
               <InfoRow
-                label="Release"
+                label="Episodes"
+                value={
+                  show.episodeCount !==
+                    null &&
+                  show.episodeCount !==
+                    undefined
+                    ? String(
+                        show.episodeCount,
+                      )
+                    : "Not specified"
+                }
+              />
+
+              <InfoRow
+                label="Expected release"
                 value={formatDate(
-                  show.expectedReleaseDate
+                  show.expectedReleaseDate,
                 )}
               />
+
             </div>
+
           </Card>
+
         </div>
+
+        {/* ===================================================
+            RIGHT COLUMN
+        =================================================== */}
+
+        <div className="space-y-6">
+
+          {/* -----------------------------------------------
+              BUDGET
+          ------------------------------------------------ */}
+
+          <Card>
+
+            <div className="flex items-center gap-2 text-sm font-semibold mb-4">
+
+              <Gauge className="h-4 w-4 text-primary" />
+
+              Budget overview
+
+            </div>
+
+            <div className="text-3xl font-bold">
+              {formatCurrency(
+                show.estimatedBudget,
+              )}
+            </div>
+
+            <div className="text-xs text-muted-foreground mt-1">
+              Estimated production budget
+            </div>
+
+            <div className="mt-5">
+
+              <div className="flex justify-between text-xs mb-2">
+
+                <span className="text-muted-foreground">
+                  Workflow progress
+                </span>
+
+                <span className="font-medium">
+                  {progress}%
+                </span>
+
+              </div>
+
+              <Progress
+                value={
+                  progress
+                }
+              />
+
+            </div>
+
+          </Card>
+
+          {/* -----------------------------------------------
+              CREATOR
+          ------------------------------------------------ */}
+
+          <Card>
+
+            <div className="flex items-center gap-2 text-sm font-semibold mb-4">
+
+              <Clapperboard className="h-4 w-4 text-primary" />
+
+              Creator
+
+            </div>
+
+            <div className="flex items-center gap-3">
+
+              <div className="h-11 w-11 rounded-full bg-primary/10 text-primary grid place-items-center shrink-0">
+
+                <Users2 className="h-5 w-5" />
+
+              </div>
+
+              <div className="min-w-0">
+
+                <div className="text-sm font-medium truncate">
+                  {creatorName}
+                </div>
+
+                <div className="text-xs text-muted-foreground truncate mt-1">
+                  {creatorEmail}
+                </div>
+
+              </div>
+
+            </div>
+
+          </Card>
+
+          {/* -----------------------------------------------
+              GENRE
+          ------------------------------------------------ */}
+
+          <Card>
+
+            <div className="flex items-center gap-2 text-sm font-semibold mb-4">
+
+              <Film className="h-4 w-4 text-primary" />
+
+              Genre
+
+            </div>
+
+            <p className="text-sm text-muted-foreground leading-6">
+              {genreNames}
+            </p>
+
+          </Card>
+
+          {/* -----------------------------------------------
+              TARGET AUDIENCE
+          ------------------------------------------------ */}
+
+          <Card>
+
+            <div className="flex items-center gap-2 text-sm font-semibold mb-4">
+
+              <Users2 className="h-4 w-4 text-primary" />
+
+              Target audience
+
+            </div>
+
+            <p className="text-sm text-muted-foreground leading-6">
+              {show.targetAudience ||
+                "Not specified"}
+            </p>
+
+          </Card>
+
+          {/* -----------------------------------------------
+              RELEASE TIMELINE
+          ------------------------------------------------ */}
+
+          <Card>
+
+            <div className="flex items-center gap-2 text-sm font-semibold mb-4">
+
+              <CalendarDays className="h-4 w-4 text-primary" />
+
+              Release timeline
+
+            </div>
+
+            <div className="rounded-xl border border-border p-4">
+
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                Expected release
+              </div>
+
+              <div className="mt-2 text-lg font-semibold">
+                {formatDate(
+                  show.expectedReleaseDate,
+                )}
+              </div>
+
+            </div>
+
+          </Card>
+
+        </div>
+
       </div>
+
     </DashboardLayout>
   );
 }
+
+/* =========================================================
+   FACT COMPONENT
+========================================================= */
 
 function Fact({
   icon,
@@ -443,6 +1013,7 @@ function Fact({
 }) {
   return (
     <div className="rounded-xl border border-border p-4">
+
       <div className="flex items-center gap-2 text-muted-foreground text-[10px] uppercase tracking-widest">
         {icon}
         {label}
@@ -451,9 +1022,14 @@ function Fact({
       <div className="mt-1.5 text-lg font-bold truncate">
         {value}
       </div>
+
     </div>
   );
 }
+
+/* =========================================================
+   INFO ROW
+========================================================= */
 
 function InfoRow({
   label,
@@ -463,14 +1039,16 @@ function InfoRow({
   value: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="text-muted-foreground">
+    <div className="flex items-start justify-between gap-5">
+
+      <span className="text-muted-foreground shrink-0">
         {label}
       </span>
 
-      <span className="font-medium text-right">
+      <span className="font-medium text-right break-words">
         {value}
       </span>
+
     </div>
   );
 }
