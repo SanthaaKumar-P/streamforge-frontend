@@ -26,6 +26,23 @@ export type Role =
   | "CONTENT_MANAGER"
   | "ADMIN";
 
+/*
+ * Compatibility role constants.
+ *
+ * IMPORTANT:
+ * These are only constants.
+ * They do NOT switch the authenticated user's role.
+ */
+export const ROLES = {
+  GUEST: "GUEST",
+  VIEWER: "VIEWER",
+  CREATOR: "CREATOR",
+  DIRECTOR: "DIRECTOR",
+  PRODUCER: "PRODUCER",
+  CONTENT_MANAGER: "CONTENT_MANAGER",
+  ADMIN: "ADMIN",
+} as const satisfies Record<Role, Role>;
+
 
 /* =========================================================
    PERMISSIONS
@@ -54,31 +71,14 @@ export type Permission =
    ROLE LABELS
 ========================================================= */
 
-export const ROLE_LABELS: Record<
-  Role,
-  string
-> = {
-
-  GUEST:
-    "Guest",
-
-  VIEWER:
-    "Viewer",
-
-  CREATOR:
-    "Creator",
-
-  DIRECTOR:
-    "Director",
-
-  PRODUCER:
-    "Producer",
-
-  CONTENT_MANAGER:
-    "Content Manager",
-
-  ADMIN:
-    "Administrator",
+export const ROLE_LABELS: Record<Role, string> = {
+  GUEST: "Guest",
+  VIEWER: "Viewer",
+  CREATOR: "Creator",
+  DIRECTOR: "Director",
+  PRODUCER: "Producer",
+  CONTENT_MANAGER: "Content Manager",
+  ADMIN: "Administrator",
 };
 
 
@@ -86,11 +86,7 @@ export const ROLE_LABELS: Record<
    ROLE DESCRIPTIONS
 ========================================================= */
 
-export const ROLE_DESCRIPTIONS: Record<
-  Role,
-  string
-> = {
-
+export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   GUEST:
     "Public browsing only",
 
@@ -116,9 +112,7 @@ export const ROLE_DESCRIPTIONS: Record<
 
 /* =========================================================
    ROLE PERMISSION MATRIX
-   =========================================================
-
-   This mirrors the SRS permission matrix.
+=========================================================
 
    Guest:
      View platform
@@ -177,142 +171,96 @@ export const ROLE_PERMISSIONS: Record<
   Role,
   readonly Permission[]
 > = {
-
   GUEST: [
-
     "view_platform",
-
     "search_shows",
-
   ],
 
   VIEWER: [
-
     "view_platform",
-
     "view_own_content",
-
     "search_shows",
-
     "update_personal_info",
-
   ],
 
   CREATOR: [
-
     "view_platform",
-
     "submit_show",
-
     "view_own_content",
-
     "search_shows",
-
     "view_production_status",
-
     "update_personal_info",
-
   ],
 
   DIRECTOR: [
-
     "view_platform",
-
     "submit_show",
-
     "view_own_content",
-
     "search_shows",
-
     "view_production_status",
-
     "update_personal_info",
-
     "manage_productions",
-
     "generate_reports",
-
   ],
 
   PRODUCER: [
-
     "view_platform",
-
     "search_shows",
-
     "view_production_status",
-
     "update_personal_info",
-
     "manage_productions",
-
     "manage_budgets",
-
     "view_all_content",
-
     "generate_reports",
-
   ],
 
   CONTENT_MANAGER: [
-
     "view_platform",
-
     "search_shows",
-
     "view_production_status",
-
     "update_personal_info",
-
     "evaluate_content",
-
     "approve_shows",
-
     "manage_budgets",
-
     "view_all_content",
-
     "generate_reports",
-
   ],
 
   ADMIN: [
-
     "view_platform",
-
     "submit_show",
-
     "view_own_content",
-
     "search_shows",
-
     "view_production_status",
-
     "update_personal_info",
-
     "manage_productions",
-
     "evaluate_content",
-
     "approve_shows",
-
     "manage_budgets",
-
     "view_all_content",
-
     "generate_reports",
-
     "manage_users",
-
     "system_configuration",
-
     "analytics",
-
     "audit_logs",
-
   ],
-
 };
+
+
+/* =========================================================
+   PERMISSION MATRIX COMPATIBILITY EXPORT
+=========================================================
+
+   Some existing routes import:
+
+     PERMISSION_MATRIX
+
+   Keep ROLE_PERMISSIONS as the main source of truth and
+   expose this alias so both existing APIs continue working.
+
+========================================================= */
+
+export const PERMISSION_MATRIX = ROLE_PERMISSIONS;
 
 
 /* =========================================================
@@ -322,76 +270,42 @@ export const ROLE_PERMISSIONS: Record<
 export function normalizeRole(
   value: unknown
 ): Role {
-
-  if (
-    typeof value !== "string"
-  ) {
-
+  if (typeof value !== "string") {
     return "GUEST";
   }
 
+  const normalized = value
+    .trim()
+    .toUpperCase()
+    .replace(/^ROLE_/, "")
+    .replace(/[\s-]+/g, "_");
 
-  const normalized =
-    value
-      .trim()
-      .toUpperCase()
-      .replace(
-        /^ROLE_/,
-        ""
-      )
-      .replace(
-        /[\s-]+/g,
-        "_"
-      );
-
-
-  switch (
-    normalized
-  ) {
-
+  switch (normalized) {
     case "ADMIN":
-
     case "ADMINISTRATOR":
-
       return "ADMIN";
 
-
     case "CREATOR":
-
       return "CREATOR";
 
-
     case "DIRECTOR":
-
       return "DIRECTOR";
 
-
     case "PRODUCER":
-
       return "PRODUCER";
 
-
     case "CONTENT_MANAGER":
-
     case "CONTENTMANAGER":
-
     case "CONTENT_MANAGER_ROLE":
-
       return "CONTENT_MANAGER";
 
-
     case "VIEWER":
-
       return "VIEWER";
 
-
     case "GUEST":
-
       return "GUEST";
 
-
     default:
-
       return "GUEST";
   }
 }
@@ -404,78 +318,42 @@ export function normalizeRole(
 export function extractRole(
   value: unknown
 ): Role | null {
-
-  if (
-    value === null ||
-    value === undefined
-  ) {
-
+  if (value === null || value === undefined) {
     return null;
   }
-
 
   /* -------------------------------------------------------
      Direct string
   ------------------------------------------------------- */
 
-  if (
-    typeof value === "string"
-  ) {
-
-    const normalized =
-      normalizeRole(
-        value
-      );
+  if (typeof value === "string") {
+    const normalized = normalizeRole(value);
 
     /*
      * Don't treat arbitrary strings as GUEST.
      * Return null so caller can continue looking.
      */
 
-    const validRoles: string[] = [
-
+    const validRoles = [
       "GUEST",
-
       "VIEWER",
-
       "CREATOR",
-
       "DIRECTOR",
-
       "PRODUCER",
-
       "CONTENT_MANAGER",
-
       "ADMIN",
-
       "ADMINISTRATOR",
-
     ];
 
+    const cleaned = value
+      .trim()
+      .toUpperCase()
+      .replace(/^ROLE_/, "")
+      .replace(/[\s-]+/g, "_");
 
-    const cleaned =
-      value
-        .trim()
-        .toUpperCase()
-        .replace(
-          /^ROLE_/,
-          ""
-        )
-        .replace(
-          /[\s-]+/g,
-          "_"
-        );
-
-
-    if (
-      validRoles.includes(
-        cleaned
-      )
-    ) {
-
+    if (validRoles.includes(cleaned)) {
       return normalized;
     }
-
 
     return null;
   }
@@ -485,26 +363,14 @@ export function extractRole(
      Array
   ------------------------------------------------------- */
 
-  if (
-    Array.isArray(value)
-  ) {
-
-    for (
-      const item of value
-    ) {
-
-      const role =
-        extractRole(
-          item
-        );
-
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const role = extractRole(item);
 
       if (role) {
-
         return role;
       }
     }
-
 
     return null;
   }
@@ -514,48 +380,24 @@ export function extractRole(
      Object
   ------------------------------------------------------- */
 
-  if (
-    typeof value ===
-    "object"
-  ) {
-
-    const object =
-      value as Record<
-        string,
-        unknown
-      >;
-
+  if (typeof value === "object") {
+    const object = value as Record<string, unknown>;
 
     /*
      * Direct role fields
      */
 
     const directCandidates = [
-
       object.role,
-
       object.roleName,
-
       object.authority,
-
       object.name,
-
     ];
 
-
-    for (
-      const candidate
-      of directCandidates
-    ) {
-
-      const role =
-        extractRole(
-          candidate
-        );
-
+    for (const candidate of directCandidates) {
+      const role = extractRole(candidate);
 
       if (role) {
-
         return role;
       }
     }
@@ -566,38 +408,21 @@ export function extractRole(
      */
 
     const nestedCandidates = [
-
       object.roles,
-
       object.authorities,
-
       object.user,
-
       object.data,
-
       object.profile,
-
     ];
 
-
-    for (
-      const candidate
-      of nestedCandidates
-    ) {
-
-      const role =
-        extractRole(
-          candidate
-        );
-
+    for (const candidate of nestedCandidates) {
+      const role = extractRole(candidate);
 
       if (role) {
-
         return role;
       }
     }
   }
-
 
   return null;
 }
@@ -605,7 +430,7 @@ export function extractRole(
 
 /* =========================================================
    READ AUTHENTICATED ROLE
-   =========================================================
+=========================================================
 
    IMPORTANT:
 
@@ -613,32 +438,29 @@ export function extractRole(
 
    It only reads the role assigned by the backend.
 
-   SSR safe because auth.ts is SSR safe.
+   Priority:
+
+   1. Stored backend user
+   2. Explicit stored role
+   3. JWT role claim
+   4. Guest fallback
+
 ========================================================= */
 
-export function readAuthenticatedRole():
-  Role {
-
+export function readAuthenticatedRole(): Role {
   /*
    * -------------------------------------------------------
    * 1. Stored backend user
    * -------------------------------------------------------
    */
 
-  const storedUser =
-    getStoredUser();
+  const storedUser = getStoredUser();
 
+  const storedUserRole = extractRole(
+    storedUser
+  );
 
-  const storedUserRole =
-    extractRole(
-      storedUser
-    );
-
-
-  if (
-    storedUserRole
-  ) {
-
+  if (storedUserRole) {
     return storedUserRole;
   }
 
@@ -649,17 +471,10 @@ export function readAuthenticatedRole():
    * -------------------------------------------------------
    */
 
-  const storedRole =
-    getStoredRole();
+  const storedRole = getStoredRole();
 
-
-  if (
-    storedRole
-  ) {
-
-    return normalizeRole(
-      storedRole
-    );
+  if (storedRole) {
+    return normalizeRole(storedRole);
   }
 
 
@@ -667,40 +482,25 @@ export function readAuthenticatedRole():
    * -------------------------------------------------------
    * 3. JWT fallback
    * -------------------------------------------------------
-   *
-   * Current backend JWT primarily contains
-   * username/subject, but this fallback supports
-   * role claims if they are present.
    */
 
-  const token =
-    getToken();
+  const token = getToken();
 
-
-  if (
-    !token
-  ) {
-
+  if (!token) {
     return "GUEST";
   }
 
+  const jwtRole = extractRoleFromJwt(token);
 
-  const jwtRole =
-    extractRoleFromJwt(
-      token
-    );
-
-
-  if (
-    jwtRole
-  ) {
-
+  if (jwtRole) {
     return jwtRole;
   }
 
 
   /*
-   * No authenticated role available.
+   * -------------------------------------------------------
+   * No authenticated role available
+   * -------------------------------------------------------
    */
 
   return "GUEST";
@@ -714,67 +514,33 @@ export function readAuthenticatedRole():
 function extractRoleFromJwt(
   token: string
 ): Role | null {
-
-  if (
-    typeof window ===
-    "undefined"
-  ) {
-
+  if (typeof window === "undefined") {
     return null;
   }
 
-
   try {
+    const parts = token.split(".");
 
-    const parts =
-      token.split(".");
-
-
-    if (
-      parts.length !== 3
-    ) {
-
+    if (parts.length !== 3) {
       return null;
     }
 
-
-    const base64 =
-      parts[1]
-        .replace(
-          /-/g,
-          "+"
-        )
-        .replace(
-          /_/g,
-          "/"
-        );
-
+    const base64 = parts[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
 
     const padded =
       base64 +
       "=".repeat(
-        (
-          4 -
-          (base64.length % 4)
-        ) % 4
+        (4 - (base64.length % 4)) % 4
       );
 
-
-    const payload =
-      JSON.parse(
-        window.atob(
-          padded
-        )
-      );
-
-
-    return extractRole(
-      payload
+    const payload = JSON.parse(
+      window.atob(padded)
     );
 
-  }
-  catch {
-
+    return extractRole(payload);
+  } catch {
     return null;
   }
 }
@@ -788,31 +554,18 @@ export function can(
   role: Role | string | null | undefined,
   permission: Permission
 ): boolean {
-
-  const normalizedRole =
-    normalizeRole(
-      role
-    );
-
+  const normalizedRole = normalizeRole(role);
 
   /*
-   * ADMIN automatically has
-   * all permissions.
+   * ADMIN automatically has all permissions.
    */
 
-  if (
-    normalizedRole ===
-    "ADMIN"
-  ) {
-
+  if (normalizedRole === "ADMIN") {
     return true;
   }
 
-
   return (
-    ROLE_PERMISSIONS[
-      normalizedRole
-    ]?.includes(
+    ROLE_PERMISSIONS[normalizedRole]?.includes(
       permission
     ) ?? false
   );
@@ -827,11 +580,8 @@ export function hasPermission(
   permission: Permission,
   role?: Role | string | null
 ): boolean {
-
   const currentRole =
-    role ??
-    readAuthenticatedRole();
-
+    role ?? readAuthenticatedRole();
 
   return can(
     currentRole,
@@ -848,11 +598,8 @@ export function hasAnyPermission(
   permissions: readonly Permission[],
   role?: Role | string | null
 ): boolean {
-
   const currentRole =
-    role ??
-    readAuthenticatedRole();
-
+    role ?? readAuthenticatedRole();
 
   return permissions.some(
     (permission) =>
@@ -872,11 +619,8 @@ export function hasAllPermissions(
   permissions: readonly Permission[],
   role?: Role | string | null
 ): boolean {
-
   const currentRole =
-    role ??
-    readAuthenticatedRole();
-
+    role ?? readAuthenticatedRole();
 
   return permissions.every(
     (permission) =>
@@ -896,17 +640,12 @@ export function hasRole(
   requiredRole: Role,
   currentRole?: Role | string | null
 ): boolean {
-
-  const role =
-    currentRole ??
-    readAuthenticatedRole();
-
+  const role = normalizeRole(
+    currentRole ?? readAuthenticatedRole()
+  );
 
   return (
-    normalizeRole(
-      role
-    ) ===
-    requiredRole
+    role === normalizeRole(requiredRole)
   );
 }
 
@@ -919,17 +658,11 @@ export function hasAnyRole(
   roles: readonly Role[],
   currentRole?: Role | string | null
 ): boolean {
-
-  const role =
-    normalizeRole(
-      currentRole ??
-      readAuthenticatedRole()
-    );
-
-
-  return roles.includes(
-    role
+  const role = normalizeRole(
+    currentRole ?? readAuthenticatedRole()
   );
+
+  return roles.includes(role);
 }
 
 
@@ -938,53 +671,40 @@ export function hasAnyRole(
 ========================================================= */
 
 interface RoleContextValue {
-
   /*
    * Actual authenticated role.
    */
-
   role: Role;
 
-
   /*
-   * Whether the browser-side auth state
-   * has been loaded.
+   * Whether browser-side auth state has been loaded.
    */
-
   initialized: boolean;
-
 
   /*
    * Permission check.
    */
-
   can: (
     permission: Permission
   ) => boolean;
 
-
   /*
    * Role check.
    */
-
   hasRole: (
     requiredRole: Role
   ) => boolean;
 
-
   /*
    * Multiple role check.
    */
-
   hasAnyRole: (
     roles: readonly Role[]
   ) => boolean;
 
-
   /*
    * Permission helpers.
    */
-
   hasPermission: (
     permission: Permission
   ) => boolean;
@@ -996,16 +716,13 @@ interface RoleContextValue {
   hasAllPermissions: (
     permissions: readonly Permission[]
   ) => boolean;
-
 }
 
 
 const RoleContext =
   createContext<
     RoleContextValue | undefined
-  >(
-    undefined
-  );
+  >(undefined);
 
 
 /* =========================================================
@@ -1017,32 +734,22 @@ export function RoleProvider({
 }: {
   children: ReactNode;
 }) {
-
   /*
    * -------------------------------------------------------
    * IMPORTANT SSR RULE
    * -------------------------------------------------------
    *
-   * NEVER call localStorage/sessionStorage
-   * directly in the useState initializer.
+   * NEVER call localStorage/sessionStorage directly in
+   * the useState initializer.
    *
    * Server rendering has no browser storage.
    */
 
-  const [
-    role,
-    setRole,
-  ] = useState<Role>(
-    "GUEST"
-  );
+  const [role, setRole] =
+    useState<Role>("GUEST");
 
-
-  const [
-    initialized,
-    setInitialized,
-  ] = useState(
-    false
-  );
+  const [initialized, setInitialized] =
+    useState(false);
 
 
   /* -------------------------------------------------------
@@ -1050,20 +757,14 @@ export function RoleProvider({
   ------------------------------------------------------- */
 
   useEffect(() => {
-
     const authenticatedRole =
       readAuthenticatedRole();
-
 
     setRole(
       authenticatedRole
     );
 
-
-    setInitialized(
-      true
-    );
-
+    setInitialized(true);
   }, []);
 
 
@@ -1072,45 +773,32 @@ export function RoleProvider({
   ------------------------------------------------------- */
 
   useEffect(() => {
-
-    if (
-      typeof window ===
-      "undefined"
-    ) {
-
+    if (typeof window === "undefined") {
       return;
     }
 
+    const handleAuthChange = () => {
+      const authenticatedRole =
+        readAuthenticatedRole();
 
-    const handleAuthChange =
-      () => {
+      setRole(
+        authenticatedRole
+      );
 
-        const authenticatedRole =
-          readAuthenticatedRole();
-
-
-        setRole(
-          authenticatedRole
-        );
-
-      };
-
+      setInitialized(true);
+    };
 
     window.addEventListener(
       "streamforge:auth-changed",
       handleAuthChange
     );
 
-
     return () => {
-
       window.removeEventListener(
         "streamforge:auth-changed",
         handleAuthChange
       );
-
     };
-
   }, []);
 
 
@@ -1121,35 +809,28 @@ export function RoleProvider({
   const value =
     useMemo<RoleContextValue>(
       () => ({
-
         role,
 
         initialized,
 
-        can: (
-          permission
-        ) =>
+        can: (permission) =>
           can(
             role,
             permission
           ),
 
-        hasRole: (
-          requiredRole
-        ) =>
+        hasRole: (requiredRole) =>
           role ===
-          requiredRole,
+          normalizeRole(
+            requiredRole
+          ),
 
-        hasAnyRole: (
-          roles
-        ) =>
+        hasAnyRole: (roles) =>
           roles.includes(
             role
           ),
 
-        hasPermission: (
-          permission
-        ) =>
+        hasPermission: (permission) =>
           can(
             role,
             permission
@@ -1176,7 +857,6 @@ export function RoleProvider({
                 permission
               )
           ),
-
       }),
       [
         role,
@@ -1189,9 +869,7 @@ export function RoleProvider({
     <RoleContext.Provider
       value={value}
     >
-
       {children}
-
     </RoleContext.Provider>
   );
 }
@@ -1201,24 +879,17 @@ export function RoleProvider({
    USE ROLE
 ========================================================= */
 
-export function useRole():
-  RoleContextValue {
-
+export function useRole(): RoleContextValue {
   const context =
     useContext(
       RoleContext
     );
 
-
-  if (
-    !context
-  ) {
-
+  if (!context) {
     throw new Error(
       "useRole must be used inside RoleProvider"
     );
   }
-
 
   return context;
 }
@@ -1228,9 +899,7 @@ export function useRole():
    CURRENT ROLE
 ========================================================= */
 
-export function getCurrentRole():
-  Role {
-
+export function getCurrentRole(): Role {
   return readAuthenticatedRole();
 }
 
@@ -1242,17 +911,11 @@ export function getCurrentRole():
 export function getRoleLabel(
   role: Role | string | null | undefined
 ): string {
-
   const normalized =
-    normalizeRole(
-      role
-    );
-
+    normalizeRole(role);
 
   return (
-    ROLE_LABELS[
-      normalized
-    ] ??
+    ROLE_LABELS[normalized] ??
     "Guest"
   );
 }
@@ -1265,17 +928,11 @@ export function getRoleLabel(
 export function getRoleDescription(
   role: Role | string | null | undefined
 ): string {
-
   const normalized =
-    normalizeRole(
-      role
-    );
-
+    normalizeRole(role);
 
   return (
-    ROLE_DESCRIPTIONS[
-      normalized
-    ] ??
+    ROLE_DESCRIPTIONS[normalized] ??
     ROLE_DESCRIPTIONS.GUEST
   );
 }
@@ -1283,7 +940,7 @@ export function getRoleDescription(
 
 /* =========================================================
    ROLE LIST
-   =========================================================
+=========================================================
 
    Useful for displaying role information.
 
@@ -1293,23 +950,16 @@ export function getRoleDescription(
    Do NOT call setRole() from UI.
 ========================================================= */
 
-export const AVAILABLE_ROLES: readonly Role[] = [
-
-  "GUEST",
-
-  "VIEWER",
-
-  "CREATOR",
-
-  "DIRECTOR",
-
-  "PRODUCER",
-
-  "CONTENT_MANAGER",
-
-  "ADMIN",
-
-];
+export const AVAILABLE_ROLES:
+  readonly Role[] = [
+    "GUEST",
+    "VIEWER",
+    "CREATOR",
+    "DIRECTOR",
+    "PRODUCER",
+    "CONTENT_MANAGER",
+    "ADMIN",
+  ];
 
 
 /* =========================================================
@@ -1317,7 +967,6 @@ export const AVAILABLE_ROLES: readonly Role[] = [
 ========================================================= */
 
 export interface RoleInfo {
-
   id: Role;
 
   label: string;
@@ -1325,30 +974,28 @@ export interface RoleInfo {
   description: string;
 
   permissions: readonly Permission[];
-
 }
 
 
-export const ROLE_INFO: readonly RoleInfo[] =
-  AVAILABLE_ROLES.map(
-    (role) => ({
+export const ROLE_INFO:
+  readonly RoleInfo[] =
+    AVAILABLE_ROLES.map(
+      (role) => ({
+        id: role,
 
-      id: role,
+        label:
+          ROLE_LABELS[
+            role
+          ],
 
-      label:
-        ROLE_LABELS[
-          role
-        ],
+        description:
+          ROLE_DESCRIPTIONS[
+            role
+          ],
 
-      description:
-        ROLE_DESCRIPTIONS[
-          role
-        ],
-
-      permissions:
-        ROLE_PERMISSIONS[
-          role
-        ],
-
-    })
-  );
+        permissions:
+          ROLE_PERMISSIONS[
+            role
+          ],
+      })
+    );

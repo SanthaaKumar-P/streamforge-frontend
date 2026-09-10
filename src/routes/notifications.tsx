@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+
 import {
   DashboardLayout,
   PageHeader,
@@ -23,59 +24,70 @@ import {
   Inbox,
 } from "lucide-react";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-import { apiRequest } from "@/lib/api";
+import {
+  deleteNotification,
+  getUserNotifications,
+  markNotificationAsRead,
+  type NotificationResponse,
+  type NotificationType,
+} from "@/api/notifications";
+
+import {
+  getStoredUser,
+} from "@/lib/auth";
+
+import {
+  useRole,
+} from "@/lib/roles";
 
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/notifications")({
-  head: () => ({
-    meta: [
-      {
-        title: "Notifications — Netflix Show Manager",
-      },
-      {
-        name: "description",
-        content:
-          "View and manage your StreamForge notifications.",
-      },
-      {
-        property: "og:title",
-        content:
-          "Notifications — Netflix Show Manager",
-      },
-      {
-        property: "og:description",
-        content:
-          "View and manage your StreamForge notifications.",
-      },
-    ],
-  }),
-  component: NotificationsPage,
-});
 
-// ============================================================
-// TYPES
-// ============================================================
+/* =========================================================
+   ROUTE
+========================================================= */
 
-type NotificationType =
-  | "INFO"
-  | "SUCCESS"
-  | "WARNING"
-  | "ERROR";
+export const Route =
+  createFileRoute("/notifications")({
+    head: () => ({
+      meta: [
+        {
+          title:
+            "Notifications — Netflix Show Manager",
+        },
+        {
+          name: "description",
+          content:
+            "View and manage your StreamForge notifications.",
+        },
+        {
+          property: "og:title",
+          content:
+            "Notifications — Netflix Show Manager",
+        },
+        {
+          property: "og:description",
+          content:
+            "View and manage your StreamForge notifications.",
+        },
+      ],
+    }),
 
-interface NotificationResponse {
-  notificationId: number;
-  title: string;
-  message: string;
-  notificationType: NotificationType;
-  isRead: boolean;
-}
+    component:
+      NotificationsPage,
+  });
 
-// ============================================================
-// LOCAL USER
-// ============================================================
+
+/* =========================================================
+   LOCAL USER
+========================================================= */
 
 interface StoredUser {
   userId?: number;
@@ -87,12 +99,38 @@ interface StoredUser {
   email?: string;
 }
 
-// ============================================================
-// GET LOGGED-IN USER
-// ============================================================
 
-function getLoggedInUser(): StoredUser | null {
+/* =========================================================
+   GET LOGGED-IN USER
+========================================================= */
+
+function getLoggedInUser():
+  StoredUser | null {
+
   try {
+
+    const storedUser =
+      getStoredUser();
+
+    if (
+      storedUser &&
+      typeof storedUser === "object"
+    ) {
+      return storedUser as StoredUser;
+    }
+
+    /*
+     * Fallback for existing local storage
+     * structure.
+     */
+
+    if (
+      typeof window ===
+      "undefined"
+    ) {
+      return null;
+    }
+
     const raw =
       localStorage.getItem(
         "streamforge_user"
@@ -102,15 +140,20 @@ function getLoggedInUser(): StoredUser | null {
       return null;
     }
 
-    return JSON.parse(raw) as StoredUser;
+    return JSON.parse(
+      raw
+    ) as StoredUser;
+
   } catch {
+
     return null;
   }
 }
 
-// ============================================================
-// GET USER ID
-// ============================================================
+
+/* =========================================================
+   GET USER ID
+========================================================= */
 
 function getUserId(
   user: StoredUser | null
@@ -127,7 +170,9 @@ function getUserId(
   if (
     id === undefined ||
     id === null ||
-    Number.isNaN(Number(id))
+    Number.isNaN(
+      Number(id)
+    )
   ) {
     return null;
   }
@@ -135,38 +180,82 @@ function getUserId(
   return Number(id);
 }
 
-// ============================================================
-// PAGE
-// ============================================================
+
+/* =========================================================
+   PAGE
+========================================================= */
 
 function NotificationsPage() {
 
-  const [notifications, setNotifications] =
-    useState<NotificationResponse[]>([]);
+  const {
+    role,
+    initialized,
+  } = useRole();
 
-  const [loading, setLoading] =
+  const isAdmin =
+    role === "ADMIN";
+
+
+  /* -------------------------------------------------------
+     State
+  ------------------------------------------------------- */
+
+  const [
+    notifications,
+    setNotifications,
+  ] =
+    useState<
+      NotificationResponse[]
+    >([]);
+
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(true);
 
-  const [refreshing, setRefreshing] =
+  const [
+    refreshing,
+    setRefreshing,
+  ] =
     useState(false);
 
-  const [error, setError] =
-    useState<string | null>(null);
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [actionId, setActionId] =
-    useState<number | null>(null);
+  const [
+    actionId,
+    setActionId,
+  ] =
+    useState<number | null>(
+      null
+    );
 
-  const [user, setUser] =
-    useState<StoredUser | null>(null);
+  const [
+    user,
+    setUser,
+  ] =
+    useState<
+      StoredUser | null
+    >(null);
 
-  const [activeFilter, setActiveFilter] =
+  const [
+    activeFilter,
+    setActiveFilter,
+  ] =
     useState<
       "ALL" | "UNREAD" | "READ"
     >("ALL");
 
-  // ==========================================================
-  // LOAD NOTIFICATIONS
-  // ==========================================================
+
+  /* =======================================================
+     LOAD NOTIFICATIONS
+  ======================================================= */
 
   const loadNotifications =
     useCallback(
@@ -177,18 +266,28 @@ function NotificationsPage() {
         const loggedUser =
           getLoggedInUser();
 
-        setUser(loggedUser);
+        setUser(
+          loggedUser
+        );
 
         const userId =
-          getUserId(loggedUser);
+          getUserId(
+            loggedUser
+          );
 
         if (!userId) {
 
-          setNotifications([]);
+          setNotifications(
+            []
+          );
 
-          setLoading(false);
+          setLoading(
+            false
+          );
 
-          setRefreshing(false);
+          setRefreshing(
+            false
+          );
 
           setError(
             "Unable to determine the logged-in user's ID."
@@ -201,59 +300,83 @@ function NotificationsPage() {
 
           setError(null);
 
-          if (showRefreshLoader) {
-            setRefreshing(true);
+          if (
+            showRefreshLoader
+          ) {
+
+            setRefreshing(
+              true
+            );
+
           } else {
-            setLoading(true);
+
+            setLoading(
+              true
+            );
           }
 
           const data =
-            await apiRequest<
-              NotificationResponse[]
-            >(
-              `/api/notifications/user/${userId}`
+            await getUserNotifications(
+              userId
             );
 
           setNotifications(
-            Array.isArray(data)
-              ? data
-              : []
+            data
           );
 
-        } catch (err) {
+        } catch (
+          err
+        ) {
 
           const message =
             err instanceof Error
               ? err.message
               : "Failed to load notifications.";
 
-          setError(message);
+          setError(
+            message
+          );
 
-          setNotifications([]);
+          setNotifications(
+            []
+          );
 
         } finally {
 
-          setLoading(false);
+          setLoading(
+            false
+          );
 
-          setRefreshing(false);
+          setRefreshing(
+            false
+          );
         }
       },
       []
     );
 
-  // ==========================================================
-  // INITIAL LOAD
-  // ==========================================================
+
+  /* =======================================================
+     INITIAL LOAD
+  ======================================================= */
 
   useEffect(() => {
 
+    if (!initialized) {
+      return;
+    }
+
     loadNotifications();
 
-  }, [loadNotifications]);
+  }, [
+    initialized,
+    loadNotifications,
+  ]);
 
-  // ==========================================================
-  // MARK AS READ
-  // ==========================================================
+
+  /* =======================================================
+     MARK AS READ
+  ======================================================= */
 
   const markAsRead =
     async (
@@ -262,22 +385,21 @@ function NotificationsPage() {
 
       try {
 
-        setActionId(notificationId);
+        setActionId(
+          notificationId
+        );
 
         const updated =
-          await apiRequest<
-            NotificationResponse
-          >(
-            `/api/notifications/${notificationId}/read`,
-            {
-              method: "PUT",
-            }
+          await markNotificationAsRead(
+            notificationId
           );
 
         setNotifications(
           (current) =>
             current.map(
-              (notification) =>
+              (
+                notification
+              ) =>
                 notification.notificationId ===
                 notificationId
                   ? {
@@ -289,50 +411,63 @@ function NotificationsPage() {
             )
         );
 
-      } catch (err) {
+      } catch (
+        err
+      ) {
 
         const message =
           err instanceof Error
             ? err.message
             : "Failed to mark notification as read.";
 
-        setError(message);
+        setError(
+          message
+        );
 
       } finally {
 
-        setActionId(null);
+        setActionId(
+          null
+        );
       }
     };
 
-  // ==========================================================
-  // MARK ALL AS READ
-  // ==========================================================
+
+  /* =======================================================
+     MARK ALL AS READ
+  ======================================================= */
 
   const markAllAsRead =
     async () => {
 
       const unread =
         notifications.filter(
-          (notification) =>
+          (
+            notification
+          ) =>
             !notification.isRead
         );
 
-      if (unread.length === 0) {
+      if (
+        unread.length ===
+        0
+      ) {
         return;
       }
 
       try {
 
-        setRefreshing(true);
+        setRefreshing(
+          true
+        );
 
         await Promise.all(
           unread.map(
-            (notification) =>
-              apiRequest<NotificationResponse>(
-                `/api/notifications/${notification.notificationId}/read`,
-                {
-                  method: "PUT",
-                }
+            (
+              notification
+            ) =>
+              markNotificationAsRead(
+                notification.notificationId
               )
           )
         );
@@ -340,36 +475,55 @@ function NotificationsPage() {
         setNotifications(
           (current) =>
             current.map(
-              (notification) => ({
+              (
+                notification
+              ) => ({
                 ...notification,
                 isRead: true,
               })
             )
         );
 
-      } catch (err) {
+      } catch (
+        err
+      ) {
 
         const message =
           err instanceof Error
             ? err.message
             : "Failed to mark all notifications as read.";
 
-        setError(message);
+        setError(
+          message
+        );
 
       } finally {
 
-        setRefreshing(false);
+        setRefreshing(
+          false
+        );
       }
     };
 
-  // ==========================================================
-  // DELETE NOTIFICATION
-  // ==========================================================
 
-  const deleteNotification =
+  /* =======================================================
+     DELETE NOTIFICATION
+  =======================================================
+
+     IMPORTANT:
+     Backend currently allows DELETE only for ADMIN.
+
+     Therefore the delete button is shown only to ADMIN.
+  ======================================================= */
+
+  const handleDelete =
     async (
       notificationId: number
     ) => {
+
+      if (!isAdmin) {
+        return;
+      }
 
       const confirmed =
         window.confirm(
@@ -382,58 +536,76 @@ function NotificationsPage() {
 
       try {
 
-        setActionId(notificationId);
+        setActionId(
+          notificationId
+        );
 
-        await apiRequest<void>(
-          `/api/notifications/${notificationId}`,
-          {
-            method: "DELETE",
-          }
+        await deleteNotification(
+          notificationId
         );
 
         setNotifications(
           (current) =>
             current.filter(
-              (notification) =>
+              (
+                notification
+              ) =>
                 notification.notificationId !==
                 notificationId
             )
         );
 
-      } catch (err) {
+      } catch (
+        err
+      ) {
 
         const message =
           err instanceof Error
             ? err.message
             : "Failed to delete notification.";
 
-        setError(message);
+        setError(
+          message
+        );
 
       } finally {
 
-        setActionId(null);
+        setActionId(
+          null
+        );
       }
     };
 
-  // ==========================================================
-  // FILTER
-  // ==========================================================
+
+  /* =======================================================
+     FILTER
+  ======================================================= */
 
   const filteredNotifications =
     useMemo(() => {
 
-      if (activeFilter === "UNREAD") {
+      if (
+        activeFilter ===
+        "UNREAD"
+      ) {
 
         return notifications.filter(
-          (notification) =>
+          (
+            notification
+          ) =>
             !notification.isRead
         );
       }
 
-      if (activeFilter === "READ") {
+      if (
+        activeFilter ===
+        "READ"
+      ) {
 
         return notifications.filter(
-          (notification) =>
+          (
+            notification
+          ) =>
             notification.isRead
         );
       }
@@ -445,21 +617,31 @@ function NotificationsPage() {
       activeFilter,
     ]);
 
-  // ==========================================================
-  // COUNTS
-  // ==========================================================
+
+  /* =======================================================
+     COUNTS
+  ======================================================= */
 
   const unreadCount =
     notifications.filter(
-      (notification) =>
+      (
+        notification
+      ) =>
         !notification.isRead
     ).length;
 
   const readCount =
     notifications.filter(
-      (notification) =>
+      (
+        notification
+      ) =>
         notification.isRead
     ).length;
+
+
+  /* =======================================================
+     USER DISPLAY
+  ======================================================= */
 
   const displayName =
     user?.name ||
@@ -468,27 +650,29 @@ function NotificationsPage() {
     user?.email ||
     "User";
 
-  // ==========================================================
-  // RENDER
-  // ==========================================================
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
     <DashboardLayout>
 
       <div className="space-y-6">
 
-        {/* ================================================= */}
-        {/* HEADER */}
-        {/* ================================================= */}
+        {/* =================================================
+            HEADER
+        ================================================= */}
 
         <PageHeader
           title="Notifications"
           description="Stay updated with important events across the content lifecycle."
         />
 
-        {/* ================================================= */}
-        {/* ERROR */}
-        {/* ================================================= */}
+
+        {/* =================================================
+            ERROR
+        ================================================= */}
 
         {error && (
 
@@ -511,7 +695,13 @@ function NotificationsPage() {
 
             <div className="flex items-center gap-2">
 
-              <CircleX className="h-4 w-4 shrink-0" />
+              <CircleX
+                className="
+                  h-4
+                  w-4
+                  shrink-0
+                "
+              />
 
               <span>
                 {error}
@@ -520,8 +710,13 @@ function NotificationsPage() {
             </div>
 
             <button
-              onClick={() => setError(null)}
-              className="text-xs hover:underline"
+              onClick={() =>
+                setError(null)
+              }
+              className="
+                text-xs
+                hover:underline
+              "
             >
               Dismiss
             </button>
@@ -529,15 +724,29 @@ function NotificationsPage() {
           </div>
         )}
 
-        {/* ================================================= */}
-        {/* USER CARD */}
-        {/* ================================================= */}
+
+        {/* =================================================
+            USER CARD
+        ================================================= */}
 
         <Card>
 
-          <div className="flex items-center justify-between gap-4">
+          <div
+            className="
+              flex
+              items-center
+              justify-between
+              gap-4
+            "
+          >
 
-            <div className="flex items-center gap-4">
+            <div
+              className="
+                flex
+                items-center
+                gap-4
+              "
+            >
 
               <div
                 className="
@@ -552,31 +761,68 @@ function NotificationsPage() {
                 "
               >
 
-                <Bell className="h-5 w-5" />
+                <Bell
+                  className="
+                    h-5
+                    w-5
+                  "
+                />
 
               </div>
 
               <div>
 
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                <div
+                  className="
+                    text-xs
+                    uppercase
+                    tracking-wider
+                    text-muted-foreground
+                  "
+                >
                   Logged-in user
                 </div>
 
-                <div className="mt-1 text-lg font-semibold">
+                <div
+                  className="
+                    mt-1
+                    text-lg
+                    font-semibold
+                  "
+                >
                   @{displayName}
                 </div>
 
-                <div className="text-xs text-muted-foreground">
-                  User ID: {getUserId(user) ?? "Unknown"}
+                <div
+                  className="
+                    text-xs
+                    text-muted-foreground
+                  "
+                >
+                  Role: {role}
+                </div>
+
+                <div
+                  className="
+                    text-xs
+                    text-muted-foreground
+                  "
+                >
+                  User ID:{" "}
+                  {getUserId(user) ??
+                    "Unknown"}
                 </div>
 
               </div>
 
             </div>
 
+
             <button
               onClick={() =>
-                loadNotifications(true)
+                loadNotifications(
+                  true
+                )
               }
               disabled={
                 refreshing ||
@@ -615,9 +861,10 @@ function NotificationsPage() {
 
         </Card>
 
-        {/* ================================================= */}
-        {/* STAT CARDS */}
-        {/* ================================================= */}
+
+        {/* =================================================
+            STAT CARDS
+        ================================================= */}
 
         <div
           className="
@@ -630,29 +877,41 @@ function NotificationsPage() {
 
           <StatCard
             label="Total notifications"
-            value={notifications.length}
+            value={
+              notifications.length
+            }
             icon={Bell}
           />
 
           <StatCard
             label="Unread"
-            value={unreadCount}
+            value={
+              unreadCount
+            }
             icon={Inbox}
           />
 
           <StatCard
             label="Read"
-            value={readCount}
+            value={
+              readCount
+            }
             icon={CheckCheck}
           />
 
         </div>
 
-        {/* ================================================= */}
-        {/* NOTIFICATION PANEL */}
-        {/* ================================================= */}
 
-        <Card className="!p-0 overflow-hidden">
+        {/* =================================================
+            NOTIFICATION PANEL
+        ================================================= */}
+
+        <Card
+          className="
+            !p-0
+            overflow-hidden
+          "
+        >
 
           {/* PANEL HEADER */}
 
@@ -672,23 +931,45 @@ function NotificationsPage() {
 
             <div>
 
-              <div className="text-sm font-semibold">
+              <div
+                className="
+                  text-sm
+                  font-semibold
+                "
+              >
                 Your Notifications
               </div>
 
-              <div className="text-xs text-muted-foreground mt-1">
+              <div
+                className="
+                  text-xs
+                  text-muted-foreground
+                  mt-1
+                "
+              >
                 Notifications generated for your account.
               </div>
 
             </div>
 
-            <div className="flex items-center gap-2">
+
+            <div
+              className="
+                flex
+                items-center
+                gap-2
+              "
+            >
 
               {unreadCount > 0 && (
 
                 <button
-                  onClick={markAllAsRead}
-                  disabled={refreshing}
+                  onClick={
+                    markAllAsRead
+                  }
+                  disabled={
+                    refreshing
+                  }
                   className="
                     h-9
                     px-3
@@ -706,7 +987,12 @@ function NotificationsPage() {
                   "
                 >
 
-                  <CheckCheck className="h-4 w-4" />
+                  <CheckCheck
+                    className="
+                      h-4
+                      w-4
+                    "
+                  />
 
                   Mark all as read
 
@@ -717,6 +1003,7 @@ function NotificationsPage() {
             </div>
 
           </div>
+
 
           {/* FILTERS */}
 
@@ -735,25 +1022,34 @@ function NotificationsPage() {
 
             <FilterButton
               active={
-                activeFilter === "ALL"
+                activeFilter ===
+                "ALL"
               }
               onClick={() =>
-                setActiveFilter("ALL")
+                setActiveFilter(
+                  "ALL"
+                )
               }
             >
               All
             </FilterButton>
 
+
             <FilterButton
               active={
-                activeFilter === "UNREAD"
+                activeFilter ===
+                "UNREAD"
               }
               onClick={() =>
-                setActiveFilter("UNREAD")
+                setActiveFilter(
+                  "UNREAD"
+                )
               }
             >
               Unread
+
               {unreadCount > 0 && (
+
                 <span
                   className="
                     ml-1
@@ -770,21 +1066,28 @@ function NotificationsPage() {
                 >
                   {unreadCount}
                 </span>
+
               )}
+
             </FilterButton>
+
 
             <FilterButton
               active={
-                activeFilter === "READ"
+                activeFilter ===
+                "READ"
               }
               onClick={() =>
-                setActiveFilter("READ")
+                setActiveFilter(
+                  "READ"
+                )
               }
             >
               Read
             </FilterButton>
 
           </div>
+
 
           {/* CONTENT */}
 
@@ -795,15 +1098,24 @@ function NotificationsPage() {
           ) : filteredNotifications.length === 0 ? (
 
             <EmptyState
-              filter={activeFilter}
+              filter={
+                activeFilter
+              }
             />
 
           ) : (
 
-            <div className="divide-y divide-border">
+            <div
+              className="
+                divide-y
+                divide-border
+              "
+            >
 
               {filteredNotifications.map(
-                (notification) => (
+                (
+                  notification
+                ) => (
 
                   <NotificationItem
                     key={
@@ -812,12 +1124,17 @@ function NotificationsPage() {
                     notification={
                       notification
                     }
-                    actionId={actionId}
+                    actionId={
+                      actionId
+                    }
+                    isAdmin={
+                      isAdmin
+                    }
                     onRead={
                       markAsRead
                     }
                     onDelete={
-                      deleteNotification
+                      handleDelete
                     }
                   />
 
@@ -836,9 +1153,10 @@ function NotificationsPage() {
   );
 }
 
-// ============================================================
-// STAT CARD
-// ============================================================
+
+/* ============================================================
+   STAT CARD
+============================================================ */
 
 function StatCard({
   label,
@@ -854,7 +1172,13 @@ function StatCard({
 
     <Card>
 
-      <div className="flex items-center justify-between">
+      <div
+        className="
+          flex
+          items-center
+          justify-between
+        "
+      >
 
         <div>
 
@@ -869,11 +1193,18 @@ function StatCard({
             {label}
           </div>
 
-          <div className="mt-2 text-2xl font-bold">
+          <div
+            className="
+              mt-2
+              text-2xl
+              font-bold
+            "
+          >
             {value}
           </div>
 
         </div>
+
 
         <div
           className="
@@ -887,7 +1218,12 @@ function StatCard({
           "
         >
 
-          <Icon className="h-5 w-5" />
+          <Icon
+            className="
+              h-5
+              w-5
+            "
+          />
 
         </div>
 
@@ -897,9 +1233,10 @@ function StatCard({
   );
 }
 
-// ============================================================
-// FILTER BUTTON
-// ============================================================
+
+/* ============================================================
+   FILTER BUTTON
+============================================================ */
 
 function FilterButton({
   active,
@@ -939,25 +1276,26 @@ function FilterButton({
             `
       )}
     >
-
       {children}
-
     </button>
   );
 }
 
-// ============================================================
-// NOTIFICATION ITEM
-// ============================================================
+
+/* ============================================================
+   NOTIFICATION ITEM
+============================================================ */
 
 function NotificationItem({
   notification,
   actionId,
+  isAdmin,
   onRead,
   onDelete,
 }: {
   notification: NotificationResponse;
   actionId: number | null;
+  isAdmin: boolean;
   onRead: (
     notificationId: number
   ) => void;
@@ -975,6 +1313,7 @@ function NotificationItem({
     actionId ===
     notification.notificationId;
 
+
   return (
 
     <div
@@ -989,7 +1328,13 @@ function NotificationItem({
       )}
     >
 
-      <div className="flex items-start gap-4">
+      <div
+        className="
+          flex
+          items-start
+          gap-4
+        "
+      >
 
         {/* ICON */}
 
@@ -1009,19 +1354,45 @@ function NotificationItem({
           )}
         >
 
-          <Icon className="h-5 w-5" />
+          <Icon
+            className="
+              h-5
+              w-5
+            "
+          />
 
         </div>
 
+
         {/* CONTENT */}
 
-        <div className="min-w-0 flex-1">
+        <div
+          className="
+            min-w-0
+            flex-1
+          "
+        >
 
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+          <div
+            className="
+              flex
+              flex-col
+              sm:flex-row
+              sm:items-start
+              sm:justify-between
+              gap-2
+            "
+          >
 
             <div>
 
-              <div className="flex items-center gap-2">
+              <div
+                className="
+                  flex
+                  items-center
+                  gap-2
+                "
+              >
 
                 <h3
                   className={cn(
@@ -1033,6 +1404,7 @@ function NotificationItem({
                 >
                   {notification.title}
                 </h3>
+
 
                 {!notification.isRead && (
 
@@ -1051,6 +1423,7 @@ function NotificationItem({
 
               </div>
 
+
               <p
                 className="
                   mt-1.5
@@ -1064,6 +1437,7 @@ function NotificationItem({
 
             </div>
 
+
             <Chip
               variant={
                 getChipVariant(
@@ -1071,10 +1445,13 @@ function NotificationItem({
                 )
               }
             >
-              {notification.notificationType}
+              {
+                notification.notificationType
+              }
             </Chip>
 
           </div>
+
 
           {/* ACTIONS */}
 
@@ -1096,7 +1473,9 @@ function NotificationItem({
                     notification.notificationId
                   )
                 }
-                disabled={isProcessing}
+                disabled={
+                  isProcessing
+                }
                 className="
                   h-8
                   px-3
@@ -1115,9 +1494,24 @@ function NotificationItem({
               >
 
                 {isProcessing ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+
+                  <Loader2
+                    className="
+                      h-3.5
+                      w-3.5
+                      animate-spin
+                    "
+                  />
+
                 ) : (
-                  <Check className="h-3.5 w-3.5" />
+
+                  <Check
+                    className="
+                      h-3.5
+                      w-3.5
+                    "
+                  />
+
                 )}
 
                 Mark as read
@@ -1126,36 +1520,51 @@ function NotificationItem({
 
             )}
 
-            <button
-              onClick={() =>
-                onDelete(
-                  notification.notificationId
-                )
-              }
-              disabled={isProcessing}
-              className="
-                h-8
-                px-3
-                rounded-lg
-                border
-                border-destructive/30
-                text-destructive
-                text-xs
-                font-medium
-                inline-flex
-                items-center
-                gap-1.5
-                hover:bg-destructive/10
-                transition
-                disabled:opacity-50
-              "
-            >
 
-              <Trash2 className="h-3.5 w-3.5" />
+            {/* ADMIN ONLY DELETE */}
 
-              Delete
+            {isAdmin && (
 
-            </button>
+              <button
+                onClick={() =>
+                  onDelete(
+                    notification.notificationId
+                  )
+                }
+                disabled={
+                  isProcessing
+                }
+                className="
+                  h-8
+                  px-3
+                  rounded-lg
+                  border
+                  border-destructive/30
+                  text-destructive
+                  text-xs
+                  font-medium
+                  inline-flex
+                  items-center
+                  gap-1.5
+                  hover:bg-destructive/10
+                  transition
+                  disabled:opacity-50
+                "
+              >
+
+                <Trash2
+                  className="
+                    h-3.5
+                    w-3.5
+                  "
+                />
+
+                Delete
+
+              </button>
+
+            )}
+
 
             {notification.isRead && (
 
@@ -1169,7 +1578,12 @@ function NotificationItem({
                 "
               >
 
-                <CheckCheck className="h-3.5 w-3.5" />
+                <CheckCheck
+                  className="
+                    h-3.5
+                    w-3.5
+                  "
+                />
 
                 Read
 
@@ -1187,9 +1601,10 @@ function NotificationItem({
   );
 }
 
-// ============================================================
-// LOADING
-// ============================================================
+
+/* ============================================================
+   LOADING
+============================================================ */
 
 function LoadingState() {
 
@@ -1203,7 +1618,14 @@ function LoadingState() {
       "
     >
 
-      <div className="flex flex-col items-center gap-3">
+      <div
+        className="
+          flex
+          flex-col
+          items-center
+          gap-3
+        "
+      >
 
         <Loader2
           className="
@@ -1214,7 +1636,12 @@ function LoadingState() {
           "
         />
 
-        <p className="text-sm text-muted-foreground">
+        <p
+          className="
+            text-sm
+            text-muted-foreground
+          "
+        >
           Loading notifications...
         </p>
 
@@ -1224,14 +1651,18 @@ function LoadingState() {
   );
 }
 
-// ============================================================
-// EMPTY
-// ============================================================
+
+/* ============================================================
+   EMPTY
+============================================================ */
 
 function EmptyState({
   filter,
 }: {
-  filter: "ALL" | "UNREAD" | "READ";
+  filter:
+    | "ALL"
+    | "UNREAD"
+    | "READ";
 }) {
 
   const message =
@@ -1252,7 +1683,11 @@ function EmptyState({
       "
     >
 
-      <div className="text-center">
+      <div
+        className="
+          text-center
+        "
+      >
 
         <div
           className="
@@ -1268,15 +1703,33 @@ function EmptyState({
           "
         >
 
-          <Bell className="h-6 w-6" />
+          <Bell
+            className="
+              h-6
+              w-6
+            "
+          />
 
         </div>
 
-        <h3 className="text-base font-semibold">
+
+        <h3
+          className="
+            text-base
+            font-semibold
+          "
+        >
           No notifications
         </h3>
 
-        <p className="mt-1 text-sm text-muted-foreground">
+
+        <p
+          className="
+            mt-1
+            text-sm
+            text-muted-foreground
+          "
+        >
           {message}
         </p>
 
@@ -1286,9 +1739,10 @@ function EmptyState({
   );
 }
 
-// ============================================================
-// ICON
-// ============================================================
+
+/* ============================================================
+   ICON
+============================================================ */
 
 function getNotificationIcon(
   type: NotificationType
@@ -1311,9 +1765,10 @@ function getNotificationIcon(
   }
 }
 
-// ============================================================
-// ICON BACKGROUND
-// ============================================================
+
+/* ============================================================
+   ICON BACKGROUND
+============================================================ */
 
 function getNotificationIconBackground(
   type: NotificationType
@@ -1336,9 +1791,10 @@ function getNotificationIconBackground(
   }
 }
 
-// ============================================================
-// CHIP VARIANT
-// ============================================================
+
+/* ============================================================
+   CHIP VARIANT
+============================================================ */
 
 function getChipVariant(
   type: NotificationType
